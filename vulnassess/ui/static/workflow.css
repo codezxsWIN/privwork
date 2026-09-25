@@ -129,7 +129,7 @@ select { background: var(--flow-paper); padding: 8px 24px 8px 10px; border: 1px 
 .graph { position: absolute; width: 1500px; height: 740px; transform-origin: 0 0; }
 .connections, .lanes, .node-list { position: absolute; inset: 0; }
 .connections { width: 100%; height: 100%; overflow: visible; pointer-events: none; }
-.connection { fill: none; stroke: var(--flow-wire); stroke-width: 1.8; }
+.connection { fill: none; stroke: var(--flow-wire); stroke-width: 2.2; }
 .viewport[data-preview="true"] .connection.out-of-preview { opacity: .08; }
 .connection.optional { stroke-dasharray: 6 6; stroke: var(--flow-line-strong); }
 .connection.highlighted { stroke: var(--flow-selected-wire); stroke-width: 2.2; }
@@ -143,8 +143,13 @@ select { background: var(--flow-paper); padding: 8px 24px 8px 10px; border: 1px 
 .viewport[data-execution="true"] .flow-node:not([data-execution-path="true"]) { opacity: .24; }
 .viewport[data-preview="true"] .flow-node:not([data-execution-path="true"]) { visibility: hidden; }
 .viewport[data-execution="true"] .flow-node[data-execution-path="true"] { z-index: 1; }
-.flow-node { pointer-events: auto; position: absolute; width: 164px; min-height: 168px; transform: translate(-50%, -49px); border: 0; padding: 0; background: transparent; display: flex; flex-direction: column; align-items: center; color: var(--flow-ink); }
-.node-disc { display: grid; place-items: center; width: 98px; height: 98px; border: 1px solid var(--flow-line-strong); background: linear-gradient(145deg, var(--flow-tile-start), var(--flow-paper) 75%); border-radius: 8px; position: relative; box-shadow: inset 0 1px 0 var(--flow-inset), 0 3px 5px var(--flow-shadow-contact), 0 12px 26px -9px var(--flow-shadow); transition: border-color .18s ease, box-shadow .18s ease; }
+.flow-node { pointer-events: auto; position: absolute; width: 164px; min-height: 168px; transform: translate(-50%, -49px); border: 0; padding: 0; background: transparent; display: flex; flex-direction: column; align-items: center; color: var(--flow-ink); cursor: grab; touch-action: none; user-select: none; }
+.viewport.arranging, .viewport.arranging .flow-node { cursor: grabbing; }
+.node-disc { display: grid; place-items: center; width: 98px; height: 98px; border: 1px solid var(--flow-line-strong); background: linear-gradient(145deg, var(--flow-tile-start), var(--flow-paper) 75%); border-radius: 10px; position: relative; box-shadow: inset 0 1px 0 var(--flow-inset), 0 3px 5px var(--flow-shadow-contact), 0 12px 26px -9px var(--flow-shadow); transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+.node-disc::before, .node-disc::after { content: ''; position: absolute; top: calc(50% - 5px); width: 9px; height: 9px; border: 2px solid var(--flow-line-strong); border-radius: 50%; background: var(--flow-bg); }
+.node-disc::before { left: -6px; }
+.node-disc::after { right: -6px; }
+.flow-node:hover .node-disc { transform: translateY(-3px); box-shadow: inset 0 1px 0 var(--flow-inset), 0 4px 8px var(--flow-shadow-contact), 0 18px 30px -8px var(--flow-shadow); }
 .node-disc > svg { width: 34px; height: 34px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .group-transform .node-disc { background: linear-gradient(145deg, var(--flow-transform-start), var(--flow-transform)); }
 .group-intel .node-disc { background: linear-gradient(145deg, var(--flow-intel-start), var(--flow-intel)); color: var(--flow-intel-ink); }
@@ -155,13 +160,14 @@ select { background: var(--flow-paper); padding: 8px 24px 8px 10px; border: 1px 
 .flow-node:hover .node-disc { border-color: var(--flow-ink); }
 .flow-node:focus-visible { outline: none; }
 .flow-node:focus-visible .node-disc { outline: 3px solid var(--flow-focus); outline-offset: 7px; }
-.node-title { font: 600 20px/1.25 var(--flow-font); margin-top: 14px; overflow-wrap: anywhere; }
+.node-title { font: 650 17px/1.25 var(--flow-font); margin-top: 13px; overflow-wrap: anywhere; text-wrap: balance; }
 .node-subtitle { display: none; font-size: 12px; color: var(--flow-muted); margin-top: 5px; }
-.node-status { font-size: 13px; line-height: 1.4; color: var(--flow-muted); padding: 3px 0; margin-top: 4px; }
+.node-status { font-size: 11px; line-height: 1.35; color: var(--flow-muted); padding: 3px 4px; margin-top: 5px; border: 1px solid var(--flow-line); border-radius: 3px; background: var(--flow-paper); max-width: 154px; }
 .node-state-mark { width: 16px; height: 16px; border: 2px solid var(--flow-paper); border-radius: 50%; background: var(--flow-dot); position: absolute; right: 2px; bottom: 1px; display: grid; place-items: center; font-size: 12px; }
 .state-stored .node-state-mark, .state-live .node-state-mark { background: var(--flow-accent); color: var(--flow-paper); }
 .state-running .node-state-mark { background: var(--flow-ink); }
 .flow-node.state-running .node-disc { border: 2px solid var(--flow-accent); color: var(--flow-accent); box-shadow: 0 0 0 4px var(--flow-accent), 0 0 24px 4px var(--flow-accent), inset 0 0 24px var(--flow-line-strong); animation: live-node-pulse 1.5s ease-in-out infinite; }
+.flow-node.state-running .node-status, .flow-node.state-complete .node-status { border-color: var(--flow-accent); color: var(--flow-accent); }
 .flow-node.state-running .node-title { color: var(--flow-accent); text-shadow: 0 0 14px var(--flow-accent); }
 .flow-node.state-complete .node-disc { border-color: var(--flow-accent); }
 .state-complete .node-state-mark { background: var(--flow-accent); }
@@ -179,6 +185,7 @@ select { background: var(--flow-paper); padding: 8px 24px 8px 10px; border: 1px 
 .state-symbol { display: block; width: 10px; height: 10px; border: 1px solid var(--flow-muted); border-radius: 50%; margin: 0 auto 14px; }
 .canvas-legend { position: absolute; left: 28px; bottom: 68px; display: flex; gap: 20px; font-size: 10px; color: var(--flow-muted); }
 .canvas-legend span { display: flex; align-items: center; gap: 7px; }
+.canvas-legend .layout-hint { border-left: 1px solid var(--flow-line-strong); padding-left: 16px; }
 .line-sample { display: inline-block; width: 26px; border-top: 2px solid var(--flow-muted); }
 .line-sample.optional { border-top-style: dashed; }
 .viewport-tools { position: absolute; right: 24px; bottom: 3px; z-index: 3; display: flex; align-items: center; gap: 6px; background: var(--flow-paper); padding: 4px; border: 1px solid var(--flow-line); border-radius: 7px; }
@@ -258,6 +265,9 @@ select { background: var(--flow-paper); padding: 8px 24px 8px 10px; border: 1px 
 .viewport[data-view="stages"] .node-list { position: relative; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
 .viewport[data-view="stages"] .flow-node { position: static; width: 100%; min-height: 110px; transform: none; display: grid; grid-template-columns: 48px minmax(0, 1fr); grid-template-rows: auto auto auto; column-gap: 15px; align-content: center; align-items: center; padding: 18px; text-align: left; border: 1px solid var(--flow-line); border-radius: 8px; background: linear-gradient(145deg, var(--flow-soft), var(--flow-paper)); }
 .viewport[data-view="stages"] .node-disc { width: 48px; height: 48px; grid-row: 1 / 4; box-shadow: inset 0 1px 0 var(--flow-inset), 0 3px 5px var(--flow-shadow-contact); }
+.viewport[data-view="stages"] .node-disc::before, .viewport[data-view="stages"] .node-disc::after { display: none; }
+.viewport[data-view="stages"] .flow-node { cursor: pointer; }
+.viewport[data-view="stages"] .flow-node:hover .node-disc { transform: none; }
 .viewport[data-view="stages"] .node-disc > svg { width: 23px; height: 23px; }
 .viewport[data-view="stages"] .node-state-mark { width: 11px; height: 11px; right: -3px; bottom: -3px; }
 .viewport[data-view="stages"] .node-title { font-size: 14px; margin: 0; }
@@ -313,5 +323,6 @@ select { background: var(--flow-paper); padding: 8px 24px 8px 10px; border: 1px 
   .viewport[data-view="stages"] .graph { padding: 16px; }
   .viewport[data-view="stages"] .node-list { grid-template-columns: minmax(0, 1fr); }
   .canvas-legend { flex-direction: column; gap: 6px; }
+  .canvas-legend .layout-hint { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }

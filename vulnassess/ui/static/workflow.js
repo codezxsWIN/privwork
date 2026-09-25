@@ -1,4 +1,5 @@
-import {SIZE, EDGES, ICONS, buildNodes, connectedNodeIds, nodeDetails, evidenceKind, evidenceBasis} from './workflow-data.js';
+import {SIZE, NODE_SPECS, EDGES, ICONS, buildNodes, connectedNodeIds, nodeDetails, evidenceKind, evidenceBasis} from './workflow-data.js';
+import {readLayout, moveNode, positionNodes, pathNodeIds} from './workflow-layout.js';
 import {requestAnalystProgress} from './analyst-client.js';
 import {PREVIEW_SCENARIOS} from './workflow-preview.js';
 
@@ -17,7 +18,16 @@ const runSearch = document.getElementById('run-target-search');
 const providerSelect = document.getElementById('analyst-provider');
 const svgNamespace = 'http://www.w3.org/2000/svg';
 const narrowViewport = matchMedia('(max-width: 960px)');
-const view = {assessment: null, scope: null, weights: null, host: '', finding: '', node: '', mode: narrowViewport.matches ? 'stages' : 'canvas', modeChosen: false, scale: 1, panX: 0, panY: 0, load: 0, analyses: new Map()};
+const layoutKey = 'vulnassess.workflow.layout.v1';
+function loadLayout() {
+  try { return readLayout(JSON.parse(localStorage.getItem(layoutKey)), NODE_SPECS, SIZE); }
+  catch { return {}; }
+}
+const view = {assessment: null, scope: null, weights: null, host: '', finding: '', node: '', mode: narrowViewport.matches ? 'stages' : 'canvas', modeChosen: false, scale: 1, panX: 0, panY: 0, load: 0, analyses: new Map(), layout: loadLayout()};
+function saveLayout() {
+  try { localStorage.setItem(layoutKey, JSON.stringify(view.layout)); }
+  catch { document.getElementById('workflow-announcement').textContent = 'Layout changed for this session, but could not be saved in this browser.'; }
+}
 const analysisStages = [
   ['records', 'Read stored assessment'],
   ['model', 'Check model access'],
@@ -296,7 +306,7 @@ async function startLiveRun() {
   renderLiveProgress();
   renderLiveExecution();
   renderLiveResult();
-  fit();
+  fitPreviewPath();
   runPanel.hidden = true;
   document.getElementById('open-run').setAttribute('aria-expanded', 'false');
   document.getElementById('live-execution-title').focus({preventScroll: true});
@@ -603,9 +613,9 @@ function fit() {
 }
 
 function fitPreviewPath() {
-  if (!view.assessment || view.mode !== 'canvas' || liveState.previewState === 'idle') return fit();
-  const path = new Set(executionSteps().flatMap(step => [step.node, ...step.edges.flatMap(edge => edge.split(':'))]));
-  const nodes = buildNodes(view.assessment, view.scope).filter(node => path.has(node.id));
+  if (!view.assessment || view.mode !== 'canvas' || !liveState.active) return fit();
+  const path = pathNodeIds(executionSteps(), ['scope', 'nmap', 'context', 'analyst']);
+  const nodes = positionNodes(buildNodes(view.assessment, view.scope), view.layout).filter(node => path.has(node.id));
   if (!nodes.length) return fit();
   const left = Math.min(...nodes.map(node => node.x)) - 100;
   const right = Math.max(...nodes.map(node => node.x)) + 100;
@@ -649,7 +659,7 @@ function renderGraph() {
   if (!view.assessment) return;
   viewport.dataset.execution = liveState.active ? 'true' : 'false';
   viewport.dataset.preview = liveState.previewState !== 'idle' ? 'true' : 'false';
-  const nodes = applyLiveRunToNodes(buildNodes(view.assessment, view.scope, selection(), currentAnalysis()));
+  const nodes = applyLiveRunToNodes(positionNodes(buildNodes(view.assessment, view.scope, selection(), currentAnalysis()), view.layout));
   const analysis = currentAnalysis();
   const currentLive = [...liveState.stages.entries()].find(([, entry]) => entry.state === 'running');
   document.getElementById('canvas-status').textContent = liveState.previewState !== 'idle'
@@ -696,9 +706,7 @@ function renderGraph() {
   }
   const list = document.getElementById('node-list');
   list.replaceChildren();
-  const previewPath = liveState.previewState !== 'idle'
-    ? new Set(executionSteps().flatMap(step => [step.node, ...step.edges.flatMap(edge => edge.split(':'))]))
-    : new Set(['scope', 'nmap', 'context', 'analyst']);
+  const previewPath = pathNodeIds(executionSteps(), ['scope', 'nmap', 'context', 'analyst']);
   for (const node of nodes) {
     const button = element('button', `flow-node group-${node.group} state-${node.state}`);
     button.type = 'button';
@@ -706,8 +714,8 @@ function renderGraph() {
     if (previewPath.has(node.id)) button.dataset.executionPath = 'true';
     button.style.left = `${node.x}px`;
     button.style.top = `${node.y}px`;
-    button.setAttribute('aria-label', `${node.title}: ${node.status}`);
-    button.title = `${node.title} / ${node.subtitle} / ${node.status}`;
+    button.setAttribute('aria-label', `${node.title}: ${node.status}. Drag to arrange, or use Alt and arrow keys.`);
+    button.title = `${node.title} / ${node.subtitle} / ${node.status} · Drag to arrange`;
     button.setAttribute('aria-pressed', String(view.node === node.id));
     if (view.node && !connected.has(node.id)) button.classList.add('muted-node');
     const disc = element('span', 'node-disc');
@@ -717,6 +725,17 @@ function renderGraph() {
     stateMark.textContent = node.state === 'error' ? '!' : '';
     disc.append(stateMark);
     button.append(disc, element('strong', 'node-title', node.title), element('span', 'node-subtitle', node.subtitle), element('span', 'node-status', node.status));
+    button.addEventListener('keydown', event => {
+      const offsets = {ArrowLeft: [-20, 0], ArrowRight: [20, 0], ArrowUp: [0, -20], ArrowDown: [0, 20]};
+      if (view.mode !== 'canvas' || !event.altKey || !offsets[event.key]) return;
+      event.preventDefault();
+      const [dx, dy] = offsets[event.key];
+      view.layout = moveNode(view.layout, node.id, node.x + dx, node.y + dy, SIZE);
+      saveLayout();
+      renderGraph();
+      document.querySelector(`[data-node="${node.id}"]`)?.focus({preventScroll: true});
+      document.getElementById('workflow-announcement').textContent = `${node.title} moved. Layout saved.`;
+    });
     button.addEventListener('click', () => selectNode(node.id));
     list.append(button);
   }
@@ -1117,22 +1136,49 @@ for (const button of document.querySelectorAll('[data-view-mode]')) button.addEv
 });
 narrowViewport.addEventListener('change', event => { if (!view.modeChosen) setViewMode(event.matches ? 'stages' : 'canvas'); });
 document.getElementById('fit-workflow').addEventListener('click', fit);
+document.getElementById('reset-layout').addEventListener('click', () => {
+  view.layout = {};
+  try { localStorage.removeItem(layoutKey); } catch { /* The in-memory layout is still reset. */ }
+  renderGraph();
+  fit();
+  document.getElementById('workflow-announcement').textContent = 'Workflow layout reset.';
+});
 document.getElementById('zoom-in').addEventListener('click', () => zoom(1.2));
 document.getElementById('zoom-out').addEventListener('click', () => zoom(1 / 1.2));
 let drag = null;
 viewport.addEventListener('pointerdown', event => {
-  if (view.mode !== 'canvas' || event.button !== 0 || event.target.closest('button, a, select, input')) return;
-  drag = {pointer: event.pointerId, x: event.clientX, y: event.clientY, panX: view.panX, panY: view.panY};
-  viewport.setPointerCapture(event.pointerId);
-  viewport.classList.add('panning');
+  if (view.mode !== 'canvas' || event.button !== 0) return;
+  const button = event.target.closest('.flow-node');
+  if (!button && event.target.closest('button, a, select, input')) return;
+  const node = button && positionNodes(NODE_SPECS, view.layout).find(item => item.id === button.dataset.node);
+  drag = {pointer: event.pointerId, x: event.clientX, y: event.clientY, panX: view.panX, panY: view.panY, node, moved: false};
+  if (!node) viewport.setPointerCapture(event.pointerId);
+  viewport.classList.add(node ? 'arranging' : 'panning');
 });
 viewport.addEventListener('pointermove', event => {
   if (!drag || drag.pointer !== event.pointerId) return;
-  view.panX = drag.panX + event.clientX - drag.x;
-  view.panY = drag.panY + event.clientY - drag.y;
-  transform();
+  const dx = event.clientX - drag.x;
+  const dy = event.clientY - drag.y;
+  if (drag.node) {
+    if (!drag.moved && Math.hypot(dx, dy) < 4) return;
+    if (!drag.moved) viewport.setPointerCapture(event.pointerId);
+    drag.moved = true;
+    view.layout = moveNode(view.layout, drag.node.id, drag.node.x + dx / view.scale, drag.node.y + dy / view.scale, SIZE);
+    renderGraph();
+  } else {
+    view.panX = drag.panX + dx;
+    view.panY = drag.panY + dy;
+    transform();
+  }
 });
-function stopDrag() { drag = null; viewport.classList.remove('panning'); }
+function stopDrag() {
+  if (drag?.node && drag.moved) {
+    saveLayout();
+    document.getElementById('workflow-announcement').textContent = `${drag.node.title} moved. Layout saved.`;
+  }
+  drag = null;
+  viewport.classList.remove('panning', 'arranging');
+}
 viewport.addEventListener('pointerup', stopDrag);
 viewport.addEventListener('pointercancel', stopDrag);
 viewport.addEventListener('wheel', event => {
@@ -1152,9 +1198,9 @@ viewport.addEventListener('keydown', event => {
   if (event.key === '0') { event.preventDefault(); fit(); }
 });
 document.addEventListener('keydown', event => { if (event.key === 'Escape' && !inspector.hidden) document.getElementById('close-node').click(); });
-window.addEventListener('resize', () => liveState.previewState !== 'idle' ? fitPreviewPath() : fit());
+window.addEventListener('resize', () => liveState.active ? fitPreviewPath() : fit());
 new ResizeObserver(() => {
-  if (viewport.clientHeight > 0) liveState.previewState !== 'idle' ? fitPreviewPath() : fit();
+  if (viewport.clientHeight > 0) liveState.active ? fitPreviewPath() : fit();
 }).observe(viewport);
 setViewMode(view.mode);
 loadWorkflow();

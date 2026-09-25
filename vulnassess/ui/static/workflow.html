@@ -65,8 +65,9 @@
       <div class="trace-controls"><label for="workflow-host">Target</label><select id="workflow-host" disabled><option>All recorded hosts</option></select><label class="sr-only" for="workflow-finding">Trace a finding</label><select id="workflow-finding" disabled><option>All findings</option></select></div>
       <div id="graph" class="graph"><svg id="connections" class="connections" aria-hidden="true"></svg><div id="lanes" class="lanes" aria-hidden="true"></div><div id="node-list" class="node-list" aria-label="Pipeline nodes"></div></div>
       <div id="loading-state" class="canvas-state" role="status"><span class="state-symbol" aria-hidden="true"></span><strong>Opening the assessment</strong><p>Reading local records.</p></div>
-      <div class="canvas-legend" aria-label="Connection legend"><span><i class="line-sample"></i>Data dependency</span><span><i class="line-sample optional"></i>Optional / output absent</span></div>
+      <div class="canvas-legend" aria-label="Connection legend"><span><i class="line-sample"></i>Data dependency</span><span><i class="line-sample optional"></i>Optional / output absent</span><span class="layout-hint">Drag stages to arrange · Alt + arrows for keyboard</span></div>
       <div class="viewport-tools" role="group" aria-label="Canvas controls">
+        <button id="reset-layout" class="tool wide-tool" type="button" title="Reset node positions" aria-label="Reset node positions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 1 2.5 5.8M4 18v-5h5"/></svg><span>Reset</span></button>
         <button id="zoom-out" class="tool" type="button" title="Zoom out" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg></button>
         <output id="zoom-level" class="zoom-level" aria-label="Canvas zoom">100%</output>
         <button id="fit-workflow" class="tool wide-tool" type="button" title="Fit entire workflow" aria-label="Fit entire workflow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5"/></svg><span>Fit</span></button>
