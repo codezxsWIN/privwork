@@ -32,6 +32,7 @@ const analysisStages = [
   ['records', 'Read stored assessment'],
   ['model', 'Check model access'],
   ['evidence', 'Gather target evidence'],
+  ['coverage', 'Review coverage gaps'],
   ['prompt', 'Prepare grounded request'],
   ['generation', 'Generate response'],
   ['validation', 'Validate citations and scores'],
@@ -73,6 +74,20 @@ function appendDecisionFrame(holder, frame) {
   section.append(element('p', '', `Recorded role: ${String(context.role?.value || 'unknown').replaceAll('_', ' ')} · exposure: ${String(context.exposure?.value || 'unknown').replaceAll('_', ' ')}.`));
   const controls = Object.entries(context.controls || {}).map(([name, feature]) => `${name.replaceAll('_', ' ')}: ${feature.value === null ? 'unknown' : String(feature.value)}`);
   if (controls.length) section.append(element('p', '', `Recorded controls · ${controls.join(' · ')}`));
+  const limits = frame.coverage_review?.limits || [];
+  if (limits.length) {
+    section.append(element('h3', '', 'Coverage and unknowns'));
+    const coverageList = element('ul', '');
+    for (const limit of limits) coverageList.append(element('li', '', limit));
+    section.append(coverageList);
+  }
+  const scannerCoverage = Object.entries(frame.scanner_coverage || {});
+  if (scannerCoverage.length) {
+    section.append(element('h3', '', 'Scanner coverage'));
+    const scanners = element('ul', '');
+    for (const [tool, status] of scannerCoverage) scanners.append(element('li', '', `${tool}: ${status}`));
+    section.append(scanners);
+  }
   if (frame.mode === 'verification_only') {
     section.append(element('p', 'boundary-note', 'No vulnerability findings were recorded, so there is no scored finding-priority queue. The services below are verification candidates, not ranked vulnerabilities.'));
     const list = element('ul', '');

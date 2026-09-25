@@ -93,6 +93,8 @@ def test_decision_frame_exposes_context_and_stored_priority_to_model_and_output(
     assert frame["priorities"][0]["env_score"] == 9.8
     assert frame["priorities"][0]["env_modifications"] == {"AR": "H", "CR": "H", "IR": "H"}
     assert frame["priorities"][0]["score_evidence_id"] in {item["id"] for item in evidence}
+    assert "auth_required" in frame["coverage_review"]["unknown_controls"]
+    assert any("Unverified controls" in limit for limit in frame["coverage_review"]["limits"])
     assert "DECISION FRAME" in analyst.build_prompt(case, evidence, len(case["findings"]))
 
 
@@ -110,6 +112,7 @@ def test_zero_finding_frame_has_verification_candidates_not_fake_risk_scores():
     assert len(frame["verification_candidates"]) == len(case["services"])
     assert all("risk" not in item for item in frame["verification_candidates"])
     assert frame["context"]["exposure"]["value"] == "internet_facing"
+    assert any("No vulnerability findings" in limit for limit in frame["coverage_review"]["limits"])
     assert "verification_only" in analyst.build_prompt(case, evidence, 0)
 
 
@@ -145,7 +148,7 @@ def test_explicit_negative_control_evidence_remains_false():
 def test_analysis_runs_local_model_and_preserves_canonical_scores():
     payload = demo_payload()
     case, evidence, alias_map = analyst.build_case(payload, "172.28.0.12")
-    client = FakeClient(valid_result(case["findings"][0]["id"], evidence[0]["id"]))
+    client = FakeClient(valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"]))
     result = analyst.analyze_target(payload, "172.28.0.12", client)
     assert result["model"] == "test-local-model"
     assert result["canonical_scores_changed"] is False
@@ -160,7 +163,7 @@ def test_analysis_runs_local_model_and_preserves_canonical_scores():
 def test_context_effect_must_cite_recorded_context_not_just_a_service():
     payload = demo_payload()
     case, evidence, _ = analyst.build_case(payload, "172.28.0.12")
-    response = valid_result(case["findings"][0]["id"], evidence[0]["id"])
+    response = valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"])
     response["context_effect"]["evidence_ids"] = [case["services"][0]["evidence_id"]]
 
     with pytest.raises(LLMUnavailable, match="context effect.*context evidence"):
@@ -307,7 +310,7 @@ def test_unknown_auth_control_cannot_be_asserted_absent_in_action_reason():
 def test_invalid_control_assertion_gets_one_grounded_correction_attempt():
     payload = demo_payload()
     case, evidence, _ = analyst.build_case(payload, "172.28.0.12")
-    good = valid_result(case["findings"][0]["id"], evidence[0]["id"])
+    good = valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"])
     bad = copy.deepcopy(good)
     bad["recommended_actions"][0]["reason"] = "There is no TLS on this host."
 
@@ -349,13 +352,13 @@ def test_analysis_reports_only_completed_real_stages():
     result = analyst.analyze_target(
         payload,
         "172.28.0.12",
-        FakeClient(valid_result(case["findings"][0]["id"], evidence[0]["id"])),
+        FakeClient(valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"])),
         on_progress=lambda stage, state, detail: events.append((stage, state, detail)),
     )
     assert result["canonical_scores_changed"] is False
     assert [(stage, state) for stage, state, _ in events] == [
         (stage, state)
-        for stage in ("model", "evidence", "prompt", "generation", "validation")
+        for stage in ("model", "evidence", "coverage", "prompt", "generation", "validation")
         for state in ("running", "complete")
     ]
 
@@ -363,10 +366,40 @@ def test_analysis_reports_only_completed_real_stages():
 def test_unknown_model_citation_is_rejected():
     payload = demo_payload()
     case, evidence, _ = analyst.build_case(payload, "172.28.0.12")
-    response = valid_result(case["findings"][0]["id"], evidence[0]["id"])
+    response = valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"])
     response["recommended_actions"][0]["evidence_ids"] = ["E999"]
     with pytest.raises(LLMUnavailable, match="unknown evidence"):
         analyst.analyze_target(payload, "172.28.0.12", FakeClient(response))
+
+
+def test_finding_claim_cannot_borrow_an_unrelated_service_citation():
+    payload = demo_payload()
+    case, evidence, _ = analyst.build_case(payload, "172.28.0.12")
+    response = valid_result(case["findings"][0]["id"], evidence[0]["id"])
+    with pytest.raises(LLMUnavailable, match="without its supporting evidence"):
+        analyst.analyze_target(payload, "172.28.0.12", FakeClient(response))
+
+
+def test_grouped_action_requires_support_for_each_named_finding():
+    payload = demo_payload()
+    case, evidence, _ = analyst.build_case(payload, "172.28.0.12")
+    first = case["findings"][0]
+    second = {
+        **first,
+        "id": "F2",
+        "evidence_id": "E999",
+        "intelligence": [],
+        "deterministic_score": None,
+    }
+    case["findings"].append(second)
+    response = valid_result(first["id"], first["evidence_id"])
+    response["recommended_actions"][0]["finding_ids"].append(second["id"])
+    response["investigations"] = []
+    checked = analyst.validate_analysis(
+        response, {first["id"], second["id"]}, {item["id"] for item in evidence} | {"E999"}
+    )
+    with pytest.raises(LLMUnavailable, match=f"cites {second['id']} without"):
+        analyst.validate_grounding(checked, case)
 
 
 def test_cited_investigation_is_returned_with_canonical_finding_identity():
@@ -374,7 +407,7 @@ def test_cited_investigation_is_returned_with_canonical_finding_identity():
     payload = demo_payload()
     case, evidence, alias_map = analyst.build_case(payload, "172.28.0.12")
     alias = case["findings"][0]["id"]
-    citation = evidence[0]["id"]
+    citation = case["findings"][0]["evidence_id"]
     response = valid_result(alias, citation)
     response["investigations"] = [
         {
@@ -468,7 +501,7 @@ def test_case_bounds_intel_to_the_sharpest_records_at_real_scale():
 def test_validator_tolerates_small_model_envelope_noise():
     payload = demo_payload()
     case, evidence, alias_map = analyst.build_case(payload, "172.28.0.12")
-    response = valid_result(case["findings"][0]["id"], evidence[0]["id"])
+    response = valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"])
     del response["correlations"]
     response["finding_ids"] = [case["findings"][0]["id"]]
     response["evidence_ids"] = [evidence[0]["id"]]
@@ -554,7 +587,7 @@ def test_large_case_is_prioritized_bounded_and_explicitly_partial() -> None:
 def test_unsupported_identifiers_and_numbers_are_rejected(claim: str) -> None:
     payload = demo_payload()
     case, evidence, _ = analyst.build_case(payload, "172.28.0.12")
-    response = valid_result(case["findings"][0]["id"], evidence[0]["id"])
+    response = valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"])
     response["summary"] = claim
     with pytest.raises(LLMUnavailable, match="unsupported"):
         analyst.analyze_target(payload, "172.28.0.12", FakeClient(response))
@@ -567,7 +600,7 @@ def test_unsupported_identifiers_and_numbers_are_rejected(claim: str) -> None:
 def test_malformed_citations_raise_the_expected_error(field: str, value: list) -> None:
     payload = demo_payload()
     case, evidence, _ = analyst.build_case(payload, "172.28.0.12")
-    response = valid_result(case["findings"][0]["id"], evidence[0]["id"])
+    response = valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"])
     response["recommended_actions"][0][field] = value
     with pytest.raises(LLMUnavailable):
         analyst.analyze_target(payload, "172.28.0.12", FakeClient(response))
@@ -576,7 +609,7 @@ def test_malformed_citations_raise_the_expected_error(field: str, value: list) -
 def test_injected_provider_provenance_is_not_relabeled_as_ollama() -> None:
     payload = demo_payload()
     case, evidence, _ = analyst.build_case(payload, "172.28.0.12")
-    client = FakeClient(valid_result(case["findings"][0]["id"], evidence[0]["id"]))
+    client = FakeClient(valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"]))
     result = analyst.analyze_target(payload, "172.28.0.12", client)
     assert result["source"] == client.source
 
@@ -612,7 +645,7 @@ def test_missing_case_is_rejected_before_contacting_a_provider(
 def test_corpus_builder_rejects_unsupported_supervision_facts() -> None:
     payload = demo_payload()
     case, evidence, _ = analyst.build_case(payload, "172.28.0.12")
-    response = valid_result(case["findings"][0]["id"], evidence[0]["id"])
+    response = valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"])
     response["summary"] = "Confirmed CVE-2099-99999 on this host."
     with pytest.raises(LLMUnavailable, match="unsupported"):
         build_example(DATABASE, "demo", "172.28.0.12", response)
@@ -621,7 +654,7 @@ def test_corpus_builder_rejects_unsupported_supervision_facts() -> None:
 def test_corpus_builder_keeps_the_validated_case_without_writing_assessment() -> None:
     payload = demo_payload()
     case, evidence, _ = analyst.build_case(payload, "172.28.0.12")
-    response = valid_result(case["findings"][0]["id"], evidence[0]["id"])
+    response = valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"])
     example = build_example(DATABASE, "demo", "172.28.0.12", response)
     assert "untrusted data follows" in example["prompt"]
     assert example["meta"]["findings"] == len(case["findings"])
