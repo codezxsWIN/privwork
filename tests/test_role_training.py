@@ -65,9 +65,19 @@ class FeatureAblation(unittest.TestCase):
         ):
             code = main(
                 [
-                    "model", "ablate", "--data", str(SYNTHETIC / "synthetic_role_train.jsonl"),
-                    "--allow-synthetic", "--epochs", "7", "--folds", "2",
-                    "--learning-rate", "0.1", "--families", "structure",
+                    "model",
+                    "ablate",
+                    "--data",
+                    str(SYNTHETIC / "synthetic_role_train.jsonl"),
+                    "--allow-synthetic",
+                    "--epochs",
+                    "7",
+                    "--folds",
+                    "2",
+                    "--learning-rate",
+                    "0.1",
+                    "--families",
+                    "structure",
                 ]
             )
         self.assertEqual(code, 0)
@@ -81,8 +91,15 @@ class FeatureAblation(unittest.TestCase):
         with patch.object(role_model, "ablate_features") as ablate:
             code = main(
                 [
-                    "model", "ablate", "--data", str(SYNTHETIC / "synthetic_role_train.jsonl"),
-                    "--allow-synthetic", "--families", "structure", "--subsets", "all",
+                    "model",
+                    "ablate",
+                    "--data",
+                    str(SYNTHETIC / "synthetic_role_train.jsonl"),
+                    "--allow-synthetic",
+                    "--families",
+                    "structure",
+                    "--subsets",
+                    "all",
                 ]
             )
         self.assertEqual(code, ConfigError.exit_code)

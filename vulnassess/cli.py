@@ -152,7 +152,13 @@ def cmd_import(args: argparse.Namespace) -> int:
     settings = _settings(args)
     with _store(args) as store:
         summary = pipeline.do_import(
-            settings, store, args.run_id, args.target_ip, args.nmap, args.zap, args.nikto,
+            settings,
+            store,
+            args.run_id,
+            args.target_ip,
+            args.nmap,
+            args.zap,
+            args.nikto,
             args.nessus,
         )
     counts = ", ".join(f"{tool} {count}" for tool, count in sorted(summary["findings"].items()))
@@ -1156,7 +1162,9 @@ def build_parser() -> argparse.ArgumentParser:
         sub.set_defaults(handler=handler)
         return sub
 
-    viewer = add("ui", cmd_ui, run_id=False, help="view assessments and import Nessus reports on loopback")
+    viewer = add(
+        "ui", cmd_ui, run_id=False, help="view assessments and import Nessus reports on loopback"
+    )
     viewer.add_argument("--run", "--run-id", dest="run_id", help="initial run identifier")
     viewer.add_argument("--port", type=int, default=8765, help="loopback HTTP port")
     viewer.add_argument("--db", default=argparse.SUPPRESS, help="existing SQLite store path")

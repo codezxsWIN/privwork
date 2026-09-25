@@ -14,8 +14,8 @@ import time
 import urllib.error
 import urllib.request
 from ipaddress import ip_address
-from urllib.parse import urlsplit
 from typing import Callable
+from urllib.parse import urlsplit
 
 from vulnassess.errors import ConfigError, LLMUnavailable
 from vulnassess.schema import ContextProfile, Finding, Rationale, ScoreBreakdown

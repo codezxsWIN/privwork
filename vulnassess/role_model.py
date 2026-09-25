@@ -74,7 +74,8 @@ def _restrict_rows(
     if not prefixes:
         return list(rows)
     return [
-        {name: value for name, value in row.items() if name.startswith(prefixes)} for row in rows
+        {name: value for name, value in row.items() if name.startswith(tuple(prefixes))}
+        for row in rows
     ]
 
 

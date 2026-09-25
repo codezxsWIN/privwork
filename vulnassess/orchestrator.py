@@ -25,7 +25,9 @@ BINARIES = {"nmap": "nmap", "nikto": "nikto"}
 NOT_RUN_BY_AGENT = "not run by the agent"
 MAX_EXECUTION_DETAIL = 2048
 NIKTO_DEFAULT = Path.home() / "Tools" / "nikto" / "program" / "nikto.pl"
-PERL_DEFAULT = Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "usr" / "bin" / "perl.exe"
+PERL_DEFAULT = (
+    Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "usr" / "bin" / "perl.exe"
+)
 
 
 def _nikto_argv() -> tuple[str, ...] | None:
@@ -86,7 +88,10 @@ def scanner_status(tool: str) -> dict[str, str]:
         if version.returncode != 0:
             detail = (version.stderr or version.stdout or "Nikto preflight failed").strip()
             return {"status": "dependency-error", "detail": detail[:MAX_EXECUTION_DETAIL]}
-    return {"status": "available", "detail": "Local executable found; target authorization still required"}
+    return {
+        "status": "available",
+        "detail": "Local executable found; target authorization still required",
+    }
 
 
 @dataclass(frozen=True)

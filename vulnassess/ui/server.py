@@ -198,7 +198,10 @@ class UiApplication:
             raise ConfigError("Target URL has an invalid host") from error
         if (
             (parsed.scheme and parsed.scheme not in ("http", "https"))
-            or parsed.username or parsed.password or parsed.query or parsed.fragment
+            or parsed.username
+            or parsed.password
+            or parsed.query
+            or parsed.fragment
         ):
             raise ConfigError("Target URL must be HTTP(S), without credentials, query or fragment")
         try:
@@ -228,21 +231,36 @@ class UiApplication:
                 raise ConfigError("Domain resolution returned no usable or too many addresses")
         settings = Settings(self.config_dir)
         if any(settings.scope.is_canary(address) for address in addresses):
-            return {"submitted": submitted, "status": "blocked", "reason": "Canary address: never scan"}
+            return {
+                "submitted": submitted,
+                "status": "blocked",
+                "reason": "Canary address: never scan",
+            }
         if any(not settings.scope.contains(address) for address in addresses):
-            return {"submitted": submitted, "status": "blocked", "resolved_ips": addresses, "reason": "At least one resolved address is outside the authorised scope; no scanner command was built"}
+            return {
+                "submitted": submitted,
+                "status": "blocked",
+                "resolved_ips": addresses,
+                "reason": "At least one resolved address is outside the authorised scope; no scanner command was built",
+            }
         missing = [] if live_assessment.nmap_binary() else ["nmap"]
         return {
             "target": addresses[0],
             "submitted": submitted,
             "resolved_ips": addresses,
-            "status": "needs-pinning" if hostname != addresses[0] else ("ready" if not missing else "needs-tools"),
+            "status": "needs-pinning"
+            if hostname != addresses[0]
+            else ("ready" if not missing else "needs-tools"),
             "scope": settings.scope.segment(addresses[0]) or addresses[0],
             "missing": missing,
             "reason": (
                 "Scope accepted. A live run will pin this domain to its authorised IP."
                 if hostname != addresses[0]
-                else ("Scope accepted for a light live Nmap scan." if not missing else "Scope accepted, but Nmap is unavailable.")
+                else (
+                    "Scope accepted for a light live Nmap scan."
+                    if not missing
+                    else "Scope accepted, but Nmap is unavailable."
+                )
             ),
         }
 
@@ -259,7 +277,6 @@ class UiApplication:
             payload = store.run(run_id)
         if on_progress is not None:
             on_progress("records", "complete", "Stored assessment loaded")
-        options = {"on_progress": on_progress} if on_progress is not None else {}
         return {
             "run_id": run_id,
             **analyst.analyze_target(
@@ -268,16 +285,29 @@ class UiApplication:
                 model=self.analyst_model,
                 ollama_host=self.ollama_host,
                 provider=provider,
-                **options,
+                on_progress=on_progress,
             ),
         }
 
-    def live_report(self, target: str, provider: str, on_progress: Callable[[str, str, str], None], on_capture: Callable[[dict[str, Any]], None] | None = None, *, reuse_recent: bool = False) -> dict[str, Any]:
+    def live_report(
+        self,
+        target: str,
+        provider: str,
+        on_progress: Callable[[str, str, str], None],
+        on_capture: Callable[[dict[str, Any]], None] | None = None,
+        *,
+        reuse_recent: bool = False,
+    ) -> dict[str, Any]:
         on_progress("scope", "running", "Resolving and checking the entered target")
         check = self.target_check(target)
         addresses = check.get("resolved_ips") or []
-        if check.get("status") not in ("ready", "needs-tools", "needs-pinning") or len(addresses) != 1:
-            raise ConfigError(check.get("reason") or "Target must resolve to one authorised address")
+        if (
+            check.get("status") not in ("ready", "needs-tools", "needs-pinning")
+            or len(addresses) != 1
+        ):
+            raise ConfigError(
+                check.get("reason") or "Target must resolve to one authorised address"
+            )
         if check.get("missing"):
             raise ConfigError("Nmap is unavailable; configure VULNASSESS_NMAP_BIN or install Nmap")
         target_ip = addresses[0]
@@ -286,32 +316,69 @@ class UiApplication:
             recent = self._recent_live_cases.get(target_ip)
             case = recent[1] if recent and now - recent[0] < 600 else None
             if case is not None and not reuse_recent:
-                raise ConfigError("This target was scanned in the last 10 minutes. Choose re-analyze recent evidence, or wait before a new Nmap scan.")
+                raise ConfigError(
+                    "This target was scanned in the last 10 minutes. Choose re-analyze recent evidence, or wait before a new Nmap scan."
+                )
             if case is None and reuse_recent:
-                raise ConfigError("No recent scan is available to re-analyze; choose a new Nmap scan.")
+                raise ConfigError(
+                    "No recent scan is available to re-analyze; choose a new Nmap scan."
+                )
             if case is None:
                 previous = self._last_live_scan.get(target_ip, 0.0)
                 if now - previous < 600:
-                    raise ConfigError("A scan of this target is already running or its evidence is unavailable; wait 10 minutes before another live scan")
+                    raise ConfigError(
+                        "A scan of this target is already running or its evidence is unavailable; wait 10 minutes before another live scan"
+                    )
                 self._last_live_scan[target_ip] = now
         if case is not None:
             on_progress("scope", "complete", f"{target} pinned to authorised {target_ip}")
-            on_progress("scanner", "complete", "Reused the recent live scan; Nmap was not run again")
+            on_progress(
+                "scanner", "complete", "Reused the recent live scan; Nmap was not run again"
+            )
             if on_capture is not None:
-                on_capture({key: case[key] for key in ("target", "resolved_ip", "services", "finding_count", "decision_frame") if key in case})
+                on_capture(
+                    {
+                        key: case[key]
+                        for key in (
+                            "target",
+                            "resolved_ip",
+                            "services",
+                            "finding_count",
+                            "decision_frame",
+                        )
+                        if key in case
+                    }
+                )
             on_progress("context", "complete", "Reused context from the recent live scan")
-            result = analyst.analyze_target(case["payload"], target_ip, provider=provider, on_progress=on_progress)
-            return {key: value for key, value in case.items() if key != "payload"} | {"analyst": result, "reused_scan": True}
+            result = analyst.analyze_target(
+                case["payload"], target_ip, provider=provider, on_progress=on_progress
+            )
+            return {key: value for key, value in case.items() if key != "payload"} | {
+                "analyst": result,
+                "reused_scan": True,
+            }
 
         def remember_case(scanned: dict[str, Any]) -> None:
             with self._live_lock:
                 self._recent_live_cases[target_ip] = (time.monotonic(), scanned)
 
-        return live_assessment.run(target, check, self.config_dir, provider=provider, on_progress=on_progress, on_capture=on_capture, on_case=remember_case)
+        return live_assessment.run(
+            target,
+            check,
+            self.config_dir,
+            provider=provider,
+            on_progress=on_progress,
+            on_capture=on_capture,
+            on_case=remember_case,
+        )
 
-    def import_nessus_report(self, run_id: str, target_ip: str, content: bytes, *, new_run: bool = False) -> dict[str, Any]:
+    def import_nessus_report(
+        self, run_id: str, target_ip: str, content: bytes, *, new_run: bool = False
+    ) -> dict[str, Any]:
         """Import one completed export into an existing local run, then update its analysis."""
-        return import_nessus_report(self.database, self.config_dir, run_id, target_ip, content, new_run=new_run)
+        return import_nessus_report(
+            self.database, self.config_dir, run_id, target_ip, content, new_run=new_run
+        )
 
     def _repository(self) -> AssessmentRepository:
         """Open the expanded assessment store strictly read-only."""
@@ -417,10 +484,16 @@ class UiApplication:
             except ConfigError as error:
                 return error_response(400, str(error))
         if parts == ["api", "scanner-status"]:
-            return json_response(200, {
-                "nikto": orchestrator.scanner_status("nikto"),
-                "nessus": {"status": "import-only", "detail": "Completed .nessus XML scan exports can be imported for an authorized target; the app does not launch Nessus."},
-            })
+            return json_response(
+                200,
+                {
+                    "nikto": orchestrator.scanner_status("nikto"),
+                    "nessus": {
+                        "status": "import-only",
+                        "detail": "Completed .nessus XML scan exports can be imported for an authorized target; the app does not launch Nessus.",
+                    },
+                },
+            )
         if parts[0] != "api":
             return error_response(404, "UI route not found")
         try:
@@ -519,7 +592,9 @@ class UiRequestHandler(BaseHTTPRequestHandler):
         self.close_connection = True
 
         def send(event: dict[str, Any]) -> None:
-            self.wfile.write(json.dumps(event, ensure_ascii=True, allow_nan=False).encode("utf-8") + b"\n")
+            self.wfile.write(
+                json.dumps(event, ensure_ascii=True, allow_nan=False).encode("utf-8") + b"\n"
+            )
             self.wfile.flush()
 
         try:
@@ -562,14 +637,19 @@ class UiRequestHandler(BaseHTTPRequestHandler):
         self.close_connection = True
 
         def send(event: dict[str, Any]) -> None:
-            self.wfile.write(json.dumps(event, ensure_ascii=True, allow_nan=False).encode("utf-8") + b"\n")
+            self.wfile.write(
+                json.dumps(event, ensure_ascii=True, allow_nan=False).encode("utf-8") + b"\n"
+            )
             self.wfile.flush()
 
         try:
             server = cast(UiServer, self.server)
             result = server.application.live_report(
-                target, provider,
-                lambda stage, state, detail: send({"type": "stage", "stage": stage, "state": state, "detail": detail}),
+                target,
+                provider,
+                lambda stage, state, detail: send(
+                    {"type": "stage", "stage": stage, "state": state, "detail": detail}
+                ),
                 lambda capture: send({"type": "scan", "scan": capture}),
                 reuse_recent=reuse_recent,
             )
@@ -617,14 +697,27 @@ class UiRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         server = cast(UiServer, self.server)
-        if self.path != "/api/live-assessment/events" and self.path != "/api/nessus-import" and not self.path.startswith("/api/analyst/"):
+        if (
+            self.path != "/api/live-assessment/events"
+            and self.path != "/api/nessus-import"
+            and not self.path.startswith("/api/analyst/")
+        ):
             self._reply(error_response(405, "POST route not found"))
             return
         if not self._same_origin():
             return
         authority = f"127.0.0.1:{server.server_address[1]}"
-        action = "nessus-import" if self.path == "/api/nessus-import" else "live-assessment" if self.path == "/api/live-assessment/events" else "cloud-analyst"
-        if self.headers.get("Origin") != f"http://{authority}" or self.headers.get("X-VulnAssess-Action") != action:
+        action = (
+            "nessus-import"
+            if self.path == "/api/nessus-import"
+            else "live-assessment"
+            if self.path == "/api/live-assessment/events"
+            else "cloud-analyst"
+        )
+        if (
+            self.headers.get("Origin") != f"http://{authority}"
+            or self.headers.get("X-VulnAssess-Action") != action
+        ):
             self._reply(error_response(403, "Explicit same-origin action required"))
             return
         if self.path == "/api/nessus-import":
@@ -633,12 +726,18 @@ class UiRequestHandler(BaseHTTPRequestHandler):
                 run_id = self.headers.get("X-VulnAssess-Run", "")
                 target_ip = self.headers.get("X-VulnAssess-Target", "")
                 new_run = self.headers.get("X-VulnAssess-New-Run", "false")
-                if (self.headers.get("Content-Type") != "application/xml" or not 0 < size <= MAX_CAPTURE_BYTES
-                    or not 0 < len(run_id) <= 128 or not 0 < len(target_ip) <= 45
-                    or new_run not in ("true", "false")):
+                if (
+                    self.headers.get("Content-Type") != "application/xml"
+                    or not 0 < size <= MAX_CAPTURE_BYTES
+                    or not 0 < len(run_id) <= 128
+                    or not 0 < len(target_ip) <= 45
+                    or new_run not in ("true", "false")
+                ):
                     raise ValueError("invalid Nessus report request")
                 ip_address(target_ip)
-                result = server.application.import_nessus_report(run_id, target_ip, self.rfile.read(size), new_run=new_run == "true")
+                result = server.application.import_nessus_report(
+                    run_id, target_ip, self.rfile.read(size), new_run=new_run == "true"
+                )
             except (ValueError, AdapterError, ConfigError, ScopeError, OSError) as error:
                 self._reply(error_response(400, str(error)))
                 return
@@ -658,7 +757,11 @@ class UiRequestHandler(BaseHTTPRequestHandler):
         if self.path == "/api/live-assessment/events":
             if (
                 not isinstance(body, dict)
-                or set(body) not in ({"target", "provider", "share_evidence"}, {"target", "provider", "share_evidence", "reuse_recent"})
+                or set(body)
+                not in (
+                    {"target", "provider", "share_evidence"},
+                    {"target", "provider", "share_evidence", "reuse_recent"},
+                )
                 or not isinstance(body["target"], str)
                 or not 0 < len(body["target"]) <= 512
                 or body["provider"] not in ("ollama", "openrouter", "groq")
@@ -671,12 +774,19 @@ class UiRequestHandler(BaseHTTPRequestHandler):
             return
         if (
             not isinstance(body, dict)
-            or body not in ({"provider": "openrouter", "share_evidence": True}, {"provider": "groq", "share_evidence": True})
+            or body
+            not in (
+                {"provider": "openrouter", "share_evidence": True},
+                {"provider": "groq", "share_evidence": True},
+            )
             or len(parts) != 6
             or parts[:3] != ["", "api", "analyst"]
             or parts[5] != "events"
             or not all(parts[3:5])
-            or parsed.query or parsed.fragment or parsed.scheme or parsed.netloc
+            or parsed.query
+            or parsed.fragment
+            or parsed.scheme
+            or parsed.netloc
             or any(character in decoded for character in ("\\", ":", "%"))
             or any(ord(character) < 32 or ord(character) == 127 for character in decoded)
         ):

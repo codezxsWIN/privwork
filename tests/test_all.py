@@ -305,9 +305,7 @@ class TestScoring(unittest.TestCase):
 
     def test_missing_cvss_does_not_discard_observed_threat_facts(self) -> None:
         finding = make_finding(tool="zap", native_severity="Medium")
-        enrichment = make_enrichment(
-            finding_id=finding.id, cvss31_vector=None, cvss31_base=None
-        )
+        enrichment = make_enrichment(finding_id=finding.id, cvss31_vector=None, cvss31_base=None)
         profile = make_profile(exposure="internet_facing")
 
         breakdown = scoring.score(finding, enrichment, profile, (), WEIGHTS)
@@ -321,15 +319,11 @@ class TestScoring(unittest.TestCase):
         self.assertIn("KEV", breakdown.reason)
 
     def test_severity_baselines_do_not_inherit_a_native_kev_floor(self) -> None:
-        listed = make_finding(
-            tool="zap", tool_native_id="synthetic-kev", native_severity="Low"
-        )
+        listed = make_finding(tool="zap", tool_native_id="synthetic-kev", native_severity="Low")
         unlisted = make_finding(
             tool="zap", tool_native_id="synthetic-unlisted", native_severity="High", cve_ids=[]
         )
-        enrichment = make_enrichment(
-            finding_id=listed.id, cvss31_vector=None, cvss31_base=None
-        )
+        enrichment = make_enrichment(finding_id=listed.id, cvss31_vector=None, cvss31_base=None)
         profile = make_profile(exposure="internet_facing")
         with (
             TemporaryDirectory() as directory,
@@ -988,8 +982,7 @@ class TestExplain(unittest.TestCase):
         chunks = [content[index : index + 32] for index in range(0, len(content), 32)]
         body = b"".join(
             (
-                json.dumps({"message": {"content": chunk}, "done": index == len(chunks) - 1})
-                + "\n"
+                json.dumps({"message": {"content": chunk}, "done": index == len(chunks) - 1}) + "\n"
             ).encode("utf-8")
             for index, chunk in enumerate(chunks)
         )

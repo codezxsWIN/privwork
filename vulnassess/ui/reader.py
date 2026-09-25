@@ -239,13 +239,17 @@ class PostgresReadOnlyStore:
     """PostgreSQL equivalent of the UI reader, restricted to the private schema."""
 
     def __init__(self, url: str) -> None:
+        self.connection: Any
         try:
             import psycopg
             from psycopg.rows import dict_row
         except ImportError as error:
-            raise ConfigError("MISSING: install psycopg to use a PostgreSQL assessment store") from error
+            raise ConfigError(
+                "MISSING: install psycopg to use a PostgreSQL assessment store"
+            ) from error
         try:
-            self.connection = psycopg.connect(url, row_factory=dict_row)
+            connect: Any = psycopg.connect
+            self.connection = connect(url, row_factory=dict_row)
             with self.connection.cursor() as cursor:
                 cursor.execute("SET TRANSACTION READ ONLY")
                 cursor.execute("SET search_path TO vulnassess")
@@ -287,8 +291,12 @@ class PostgresReadOnlyStore:
             "ORDER BY started_at DESC, run_id"
         )
         return [
-            {"run_id": row["run_id"], "started_at": row["started_at"],
-             "config_hash": row["config_hash"], "summary": self._object(row["summary_json"], "runs.summary_json")}
+            {
+                "run_id": row["run_id"],
+                "started_at": row["started_at"],
+                "config_hash": row["config_hash"],
+                "summary": self._object(row["summary_json"], "runs.summary_json"),
+            }
             for row in rows
         ]
 
@@ -300,31 +308,69 @@ class PostgresReadOnlyStore:
         if not rows:
             raise ConfigError(f"MISSING: run {run_id!r} in PostgreSQL")
         row = rows[0]
-        return {"run_id": row["run_id"], "started_at": row["started_at"],
-                "config_hash": row["config_hash"], "summary": self._object(row["summary_json"], "runs.summary_json")}
+        return {
+            "run_id": row["run_id"],
+            "started_at": row["started_at"],
+            "config_hash": row["config_hash"],
+            "summary": self._object(row["summary_json"], "runs.summary_json"),
+        }
 
-    def _records(self, query: str, run_id: str, label: str, keys: frozenset[str] | None = None) -> list[dict[str, Any]]:
+    def _records(
+        self, query: str, run_id: str, label: str, keys: frozenset[str] | None = None
+    ) -> list[dict[str, Any]]:
         return [self._object(row["json"], label, keys) for row in self._rows(query, (run_id,))]
 
     def unavailable(self, record: str, run_id: str) -> dict[str, Any]:
-        return {"status": "MISSING", "records": None,
-                "reason": f"MISSING: persisted {record} for run {run_id!r} in PostgreSQL; the viewer does not calculate or create these records"}
+        return {
+            "status": "MISSING",
+            "records": None,
+            "reason": f"MISSING: persisted {record} for run {run_id!r} in PostgreSQL; the viewer does not calculate or create these records",
+        }
 
     def run(self, run_id: str) -> dict[str, Any]:
         run = self.run_info(run_id)
-        scores = self._records("SELECT json FROM scores WHERE run_id = %s ORDER BY risk DESC, finding_id", run_id, "scores", SCORE_KEYS)
+        scores = self._records(
+            "SELECT json FROM scores WHERE run_id = %s ORDER BY risk DESC, finding_id",
+            run_id,
+            "scores",
+            SCORE_KEYS,
+        )
         return {
             "run": run,
-            "hosts": self._records("SELECT json FROM hosts WHERE run_id = %s ORDER BY ip", run_id, "hosts", HOST_KEYS),
-            "findings": self._records("SELECT f.json FROM findings f JOIN finding_runs r ON r.finding_id = f.id WHERE r.run_id = %s ORDER BY f.id", run_id, "findings", FINDING_KEYS),
-            "context": self._records("SELECT json FROM context_profiles WHERE run_id = %s ORDER BY host_ip", run_id, "context_profiles"),
+            "hosts": self._records(
+                "SELECT json FROM hosts WHERE run_id = %s ORDER BY ip", run_id, "hosts", HOST_KEYS
+            ),
+            "findings": self._records(
+                "SELECT f.json FROM findings f JOIN finding_runs r ON r.finding_id = f.id WHERE r.run_id = %s ORDER BY f.id",
+                run_id,
+                "findings",
+                FINDING_KEYS,
+            ),
+            "context": self._records(
+                "SELECT json FROM context_profiles WHERE run_id = %s ORDER BY host_ip",
+                run_id,
+                "context_profiles",
+            ),
             "scores": scores,
-            "enrichments": self._records("SELECT e.json FROM enrichments e JOIN finding_runs r ON r.finding_id = e.finding_id WHERE r.run_id = %s ORDER BY e.finding_id, e.cve_id", run_id, "enrichments"),
-            "rationales": self._records("SELECT json FROM rationales WHERE run_id = %s ORDER BY finding_id", run_id, "rationales"),
-            "feeds_meta": self._rows("SELECT feed, path, sha256, file_date::text, rows, loaded_at::text FROM feeds_meta ORDER BY feed"),
+            "enrichments": self._records(
+                "SELECT e.json FROM enrichments e JOIN finding_runs r ON r.finding_id = e.finding_id WHERE r.run_id = %s ORDER BY e.finding_id, e.cve_id",
+                run_id,
+                "enrichments",
+            ),
+            "rationales": self._records(
+                "SELECT json FROM rationales WHERE run_id = %s ORDER BY finding_id",
+                run_id,
+                "rationales",
+            ),
+            "feeds_meta": self._rows(
+                "SELECT feed, path, sha256, file_date::text, rows, loaded_at::text FROM feeds_meta ORDER BY feed"
+            ),
             "feeds_meta_scope": "current_store_not_frozen_per_run",
             "refusals": self.unavailable("refusal log", run_id),
-            "config_hashes": {"run_config": run["config_hash"], "score_weights": sorted({score["weights_hash"] for score in scores})},
+            "config_hashes": {
+                "run_config": run["config_hash"],
+                "score_weights": sorted({score["weights_hash"] for score in scores}),
+            },
         }
 
 

@@ -29,7 +29,7 @@ def load_api_key() -> str:
         raise ConfigError("Cannot read the local .env file") from error
     for line in lines:
         if line.startswith("GROQ_API_KEY="):
-            return line.partition("=")[2].strip().strip('"\'')
+            return line.partition("=")[2].strip().strip("\"'")
     return ""
 
 
@@ -79,7 +79,11 @@ class GroqClient:
         request = urllib.request.Request(
             ENDPOINT,
             data=json.dumps(body, ensure_ascii=True).encode("utf-8"),
-            headers={"Authorization": f"Bearer {self.key}", "Content-Type": "application/json", "User-Agent": "VulnAssess/0.1"},
+            headers={
+                "Authorization": f"Bearer {self.key}",
+                "Content-Type": "application/json",
+                "User-Agent": "VulnAssess/0.1",
+            },
             method="POST",
         )
         try:
@@ -90,7 +94,9 @@ class GroqClient:
                 raise LLMUnavailable("Groq rate limit reached; no automatic retry") from error
             if error.code in (401, 403):
                 raise LLMUnavailable("Groq rejected the API key or account access") from error
-            raise LLMUnavailable(f"Groq request failed with HTTP {error.code}; no automatic retry") from error
+            raise LLMUnavailable(
+                f"Groq request failed with HTTP {error.code}; no automatic retry"
+            ) from error
         except (urllib.error.URLError, OSError, TimeoutError) as error:
             raise LLMUnavailable("Groq is unavailable; no automatic retry") from error
         if len(raw) > MAX_RESPONSE_BYTES:

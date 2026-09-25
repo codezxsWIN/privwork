@@ -14,8 +14,13 @@ from vulnassess.store import Store
 
 
 def import_nessus_report(
-    database: str | Path, config_dir: Path, run_id: str, target_ip: str, content: bytes,
-    *, new_run: bool = False,
+    database: str | Path,
+    config_dir: Path,
+    run_id: str,
+    target_ip: str,
+    content: bytes,
+    *,
+    new_run: bool = False,
 ) -> dict[str, Any]:
     """Validate one report before writing, then refresh context and deterministic scores."""
     if isinstance(database, str):

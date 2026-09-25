@@ -28,7 +28,8 @@ def test_live_scan_uses_pinned_ip_and_sends_fresh_services_to_analyst():
             '<address addr="45.33.32.156" addrtype="ipv4"/>'
             '<ports><port protocol="tcp" portid="22"><state state="open"/>'
             '<service name="ssh" product="OpenSSH" version="6.6"/></port></ports>'
-            '</host></nmaprun>', encoding="utf-8",
+            "</host></nmaprun>",
+            encoding="utf-8",
         )
         return subprocess.CompletedProcess(command, 0, "", "")
 
@@ -45,12 +46,18 @@ def test_live_scan_uses_pinned_ip_and_sends_fresh_services_to_analyst():
         assert kwargs["provider"] == "openrouter"
         return {"host_ip": host_ip, "analysis": {"summary": "SSH observed."}}
 
-    with patch.object(live_assessment, "nmap_binary", return_value="nmap.exe"), \
-         patch.object(live_assessment.subprocess, "run", side_effect=fake_nmap), \
-         patch.object(live_assessment.analyst, "analyze_target", side_effect=fake_analyst):
+    with (
+        patch.object(live_assessment, "nmap_binary", return_value="nmap.exe"),
+        patch.object(live_assessment.subprocess, "run", side_effect=fake_nmap),
+        patch.object(live_assessment.analyst, "analyze_target", side_effect=fake_analyst),
+    ):
         result = live_assessment.run(
-            "scanme.nmap.org", check, ROOT / "config", provider="openrouter",
-            on_progress=lambda *event: events.append(event), on_capture=captures.append,
+            "scanme.nmap.org",
+            check,
+            ROOT / "config",
+            provider="openrouter",
+            on_progress=lambda *event: events.append(event),
+            on_capture=captures.append,
         )
     assert result["resolved_ip"] == "45.33.32.156"
     assert result["services"][0]["port"] == 22
@@ -63,11 +70,16 @@ def test_live_scan_uses_pinned_ip_and_sends_fresh_services_to_analyst():
 
 
 def test_live_scan_refuses_out_of_scope_ip_before_launch():
-    with patch.object(live_assessment.subprocess, "run", side_effect=AssertionError("scanner launched")):
+    with patch.object(
+        live_assessment.subprocess, "run", side_effect=AssertionError("scanner launched")
+    ):
         with pytest.raises(ConfigError, match="outside the authorised scope"):
             live_assessment.run(
-                "8.8.8.8", {"status": "ready", "resolved_ips": ["8.8.8.8"]},
-                ROOT / "config", provider="openrouter", on_progress=lambda *_: None,
+                "8.8.8.8",
+                {"status": "ready", "resolved_ips": ["8.8.8.8"]},
+                ROOT / "config",
+                provider="openrouter",
+                on_progress=lambda *_: None,
             )
 
 
@@ -77,23 +89,53 @@ def test_model_retry_reuses_recent_scan_without_starting_nmap():
     events = []
     captures = []
     case = {
-        "target": "scanme.nmap.org", "resolved_ip": "45.33.32.156",
-        "scan_profile": "light", "services": [{"port": 22}], "finding_count": 0,
-        "payload": {"hosts": [{"ip": "45.33.32.156"}], "findings": [], "scores": [], "enrichments": [], "context": []},
+        "target": "scanme.nmap.org",
+        "resolved_ip": "45.33.32.156",
+        "scan_profile": "light",
+        "services": [{"port": 22}],
+        "finding_count": 0,
+        "payload": {
+            "hosts": [{"ip": "45.33.32.156"}],
+            "findings": [],
+            "scores": [],
+            "enrichments": [],
+            "context": [],
+        },
     }
 
     def first_run(*args, **kwargs):
         kwargs["on_case"](case)
         raise RuntimeError("model unavailable")
 
-    with patch.object(app, "target_check", return_value=check), \
-         patch("vulnassess.ui.server.live_assessment.run", side_effect=first_run) as scanner, \
-         patch("vulnassess.ui.server.analyst.analyze_target", return_value={"analysis": {"summary": "SSH observed"}}):
+    with (
+        patch.object(app, "target_check", return_value=check),
+        patch("vulnassess.ui.server.live_assessment.run", side_effect=first_run) as scanner,
+        patch(
+            "vulnassess.ui.server.analyst.analyze_target",
+            return_value={"analysis": {"summary": "SSH observed"}},
+        ),
+    ):
         with pytest.raises(RuntimeError, match="model unavailable"):
-            app.live_report("scanme.nmap.org", "openrouter", lambda *event: events.append(event), captures.append)
+            app.live_report(
+                "scanme.nmap.org",
+                "openrouter",
+                lambda *event: events.append(event),
+                captures.append,
+            )
         with pytest.raises(ConfigError, match="Choose re-analyze recent evidence"):
-            app.live_report("scanme.nmap.org", "openrouter", lambda *event: events.append(event), captures.append)
-        result = app.live_report("scanme.nmap.org", "openrouter", lambda *event: events.append(event), captures.append, reuse_recent=True)
+            app.live_report(
+                "scanme.nmap.org",
+                "openrouter",
+                lambda *event: events.append(event),
+                captures.append,
+            )
+        result = app.live_report(
+            "scanme.nmap.org",
+            "openrouter",
+            lambda *event: events.append(event),
+            captures.append,
+            reuse_recent=True,
+        )
 
     assert scanner.call_count == 1
     assert result["reused_scan"] is True

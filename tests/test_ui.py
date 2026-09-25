@@ -133,7 +133,9 @@ def request(
 class TestUiContract(unittest.TestCase):
     def test_live_result_cannot_collapse_the_workflow_canvas(self) -> None:
         css = (ROOT / "vulnassess" / "ui" / "static" / "workflow.css").read_text(encoding="utf-8")
-        javascript = (ROOT / "vulnassess" / "ui" / "static" / "workflow.js").read_text(encoding="utf-8")
+        javascript = (ROOT / "vulnassess" / "ui" / "static" / "workflow.js").read_text(
+            encoding="utf-8"
+        )
         live_panel = re.search(r"\.live-execution\s*\{([^}]*)\}", css)
         self.assertIsNotNone(live_panel)
         self.assertRegex(live_panel.group(1), r"max-height\s*:")
@@ -141,9 +143,15 @@ class TestUiContract(unittest.TestCase):
         self.assertIn("new ResizeObserver", javascript)
 
     def test_live_path_does_not_claim_unrun_pipeline_stages(self) -> None:
-        javascript = (ROOT / "vulnassess" / "ui" / "static" / "workflow.js").read_text(encoding="utf-8")
-        document = (ROOT / "vulnassess" / "ui" / "static" / "workflow.html").read_text(encoding="utf-8")
-        completed = javascript.split("function completedFlowEdges()", 1)[1].split("function startLiveRun()", 1)[0]
+        javascript = (ROOT / "vulnassess" / "ui" / "static" / "workflow.js").read_text(
+            encoding="utf-8"
+        )
+        document = (ROOT / "vulnassess" / "ui" / "static" / "workflow.html").read_text(
+            encoding="utf-8"
+        )
+        completed = javascript.split("function completedFlowEdges()", 1)[1].split(
+            "function startLiveRun()", 1
+        )[0]
         self.assertIn("nmap:context", completed)
         self.assertNotIn("nmap:canonical", completed)
         self.assertIn("Not run in this Nmap + AI path", javascript)
@@ -195,10 +203,16 @@ class TestUiContract(unittest.TestCase):
 
     def test_new_target_check_respects_authorised_scope_without_scanning(self) -> None:
         application = UiApplication(DATABASE, ROOT / "config", DEMO_RUN)
-        with patch("vulnassess.orchestrator.execute_local", side_effect=AssertionError("scanner ran")):
+        with patch(
+            "vulnassess.orchestrator.execute_local", side_effect=AssertionError("scanner ran")
+        ):
             status, _, body = request(application, "/api/target-check?target=192.168.0.116")
-            blocked_status, _, blocked_body = request(application, "/api/target-check?target=172.28.0.250")
-            outside_status, _, outside_body = request(application, "/api/target-check?target=8.8.8.8")
+            blocked_status, _, blocked_body = request(
+                application, "/api/target-check?target=172.28.0.250"
+            )
+            outside_status, _, outside_body = request(
+                application, "/api/target-check?target=8.8.8.8"
+            )
         self.assertEqual(status, 200)
         self.assertIn(json.loads(body)["status"], {"ready", "needs-tools"})
         self.assertEqual(json.loads(blocked_body)["status"], "blocked")
@@ -206,50 +220,57 @@ class TestUiContract(unittest.TestCase):
         self.assertEqual(blocked_status, 200)
         self.assertEqual(outside_status, 200)
         with patch("vulnassess.ui.server.resolve_addresses", return_value=["8.8.8.8"]):
-            domain_status, _, domain_body = request(application, "/api/target-check?target=example.com")
+            domain_status, _, domain_body = request(
+                application, "/api/target-check?target=example.com"
+            )
         self.assertEqual(domain_status, 200)
         self.assertEqual(json.loads(domain_body)["status"], "blocked")
-        reference_status, _, reference_body = request(application, "/api/target-check?target=https%3A%2F%2Fowasp.org%2Fwww-project-juice-shop%2F")
+        reference_status, _, reference_body = request(
+            application,
+            "/api/target-check?target=https%3A%2F%2Fowasp.org%2Fwww-project-juice-shop%2F",
+        )
         self.assertEqual(reference_status, 200)
         self.assertEqual(json.loads(reference_body)["status"], "reference")
         for hostname in (
-            "dvwa.co.uk", "docs.rapid7.com", "tryhackme.com", "www.hackthebox.com",
-            "portswigger.net", "overthewire.org", "picoctf.org", "google-gruyere.appspot.com",
+            "dvwa.co.uk",
+            "docs.rapid7.com",
+            "tryhackme.com",
+            "www.hackthebox.com",
+            "portswigger.net",
+            "overthewire.org",
+            "picoctf.org",
+            "google-gruyere.appspot.com",
         ):
             with self.subTest(hostname=hostname):
                 result = application.target_check(f"https://{hostname}/")
                 self.assertEqual(result["status"], "reference")
-        self.assertEqual(request(application, "/api/target-check?target=https%3A%2F%2Fuser%40example.com")[0], 400)
+        self.assertEqual(
+            request(application, "/api/target-check?target=https%3A%2F%2Fuser%40example.com")[0],
+            400,
+        )
 
-    def test_decision_hero_leads_with_the_stored_top_priority(self) -> None:
+    def test_project_home_leads_with_the_context_scenario_and_workflow(self) -> None:
         application = UiApplication(DATABASE, ROOT / "config", DEMO_RUN)
         _, _, body = request(application, "/")
         document = body.decode("utf-8")
-        payload = json.loads(request(application, f"/api/run/{DEMO_RUN}")[2])
-        top = payload["scores"][0]
-        self.assertIn('id="decision"', document)
+        self.assertIn('id="project-scenario"', document)
         self.assertLess(
-            document.index('id="decision"'),
-            document.index('data-panel="evidence"'),
-            "the decision plate must open the document before the evidence stage",
+            document.index('id="hero"'),
+            document.index('id="project-scenario"'),
+            "the project explains the context problem before showing its workflow",
         )
-        self.assertIn(f">{top['risk']}</span>", document)
-        self.assertIn(f">{top['band']}</span>", document)
-        self.assertIn(f"finding={top['finding_id']}", document)
-        self.assertIn(f"/workflow?run={DEMO_RUN}&amp;finding={top['finding_id']}", document)
-        self.assertIn('class="stamp">SYNTHETIC', document)
+        self.assertIn("Same warning.", document)
+        self.assertIn("Different stakes.", document)
+        self.assertIn("Synthetic example", document)
+        self.assertIn('data-workflow-node="context"', document)
+        self.assertIn('data-workflow-node="queue"', document)
 
-    def test_decision_hero_names_missing_scores_instead_of_inventing_one(self) -> None:
-        from vulnassess.ui.presentation import _decision_hero
-
-        application = UiApplication(DATABASE, ROOT / "config", DEMO_RUN)
-        payload = json.loads(request(application, f"/api/run/{DEMO_RUN}")[2])
-        payload["scores"] = []
-        hero = _decision_hero(payload, "SYNTHETIC")
-        self.assertIn("No stored priority.", hero)
-        self.assertIn("imported finding(s) and no stored scores", hero)
-        self.assertIn("SYNTHETIC", hero)
-        self.assertNotIn("decision-number", hero)
+    def test_project_home_does_not_invent_a_priority_for_an_empty_run(self) -> None:
+        application = UiApplication(DATABASE, ROOT / "config", "verify")
+        document = request(application, "/")[2].decode("utf-8")
+        self.assertIn("No like-for-like example in this run.", document)
+        self.assertNotIn("data-story-finding=", document)
+        self.assertNotIn("decision-number", document)
 
     def test_top_level_keys_are_pinned(self) -> None:
         application = UiApplication(DATABASE, ROOT / "config", DEMO_RUN)
@@ -580,7 +601,7 @@ class TestUiModel(unittest.TestCase):
             status, headers, body = self.infer({"run_id": DEMO_RUN})
         self.assertEqual(status, 405)
         self.assertEqual(headers["Allow"], "GET")
-        self.assertEqual(json.loads(body)["error"]["message"], "UI supports GET only")
+        self.assertEqual(json.loads(body)["error"]["message"], "POST route not found")
         predictor.assert_not_called()
         with ReadOnlyStore(DATABASE) as store:
             self.assertEqual(before, store.run(DEMO_RUN))
@@ -640,17 +661,29 @@ class TestUiModel(unittest.TestCase):
             self.assertEqual(payload["run"]["run_id"], "demo")
             on_progress("model", "running", "Checking local model")
             on_progress("model", "complete", "Local model available")
-            return {"host_ip": host_ip, "model": "test-local-model", "canonical_scores_changed": False}
+            return {
+                "host_ip": host_ip,
+                "model": "test-local-model",
+                "canonical_scores_changed": False,
+            }
 
         with patch.object(analyst, "analyze_target", side_effect=fake_analysis):
-            status, headers, body = request(self.application, "/api/analyst/demo/172.28.0.12/events")
+            status, headers, body = request(
+                self.application, "/api/analyst/demo/172.28.0.12/events"
+            )
         events = [json.loads(line) for line in body.splitlines()]
         self.assertEqual(status, 200)
         self.assertEqual(headers["Content-Type"], "application/x-ndjson; charset=utf-8")
-        self.assertEqual([(event["type"], event.get("state")) for event in events], [
-            ("stage", "running"), ("stage", "complete"),
-            ("stage", "running"), ("stage", "complete"), ("result", None),
-        ])
+        self.assertEqual(
+            [(event["type"], event.get("state")) for event in events],
+            [
+                ("stage", "running"),
+                ("stage", "complete"),
+                ("stage", "running"),
+                ("stage", "complete"),
+                ("result", None),
+            ],
+        )
         self.assertEqual(events[-1]["result"]["run_id"], "demo")
 
     def test_live_analyst_route_reports_failure_without_claiming_completion(self) -> None:
@@ -676,14 +709,27 @@ class TestUiModel(unittest.TestCase):
             f"Content-Length: {len(body)}\r\n"
         )
         self.assertEqual(request(self.application, path, "POST", body=body)[0], 403)
-        self.assertEqual(request(self.application, path, "POST", extra_headers=headers, body=b'{}')[0], 400)
-        with patch.object(analyst, "analyze_target", return_value={"source": "openrouter_deepseek_grounded_analysis"}) as analyze:
-            status, _, data = request(self.application, path, "POST", extra_headers=headers, body=body)
+        self.assertEqual(
+            request(self.application, path, "POST", extra_headers=headers, body=b"{}")[0], 400
+        )
+        with patch.object(
+            analyst,
+            "analyze_target",
+            return_value={"source": "openrouter_deepseek_grounded_analysis"},
+        ) as analyze:
+            status, _, data = request(
+                self.application, path, "POST", extra_headers=headers, body=body
+            )
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(data.splitlines()[-1])["result"]["source"], "openrouter_deepseek_grounded_analysis")
+        self.assertEqual(
+            json.loads(data.splitlines()[-1])["result"]["source"],
+            "openrouter_deepseek_grounded_analysis",
+        )
         self.assertEqual(analyze.call_args.kwargs["provider"], "openrouter")
 
-    def test_live_target_request_requires_origin_and_consent_without_recorded_selection(self) -> None:
+    def test_live_target_request_requires_origin_and_consent_without_recorded_selection(
+        self,
+    ) -> None:
         path = "/api/live-assessment/events"
         body = b'{"target":"scanme.nmap.org","provider":"openrouter","share_evidence":true}'
         headers = (
@@ -693,9 +739,20 @@ class TestUiModel(unittest.TestCase):
             f"Content-Length: {len(body)}\r\n"
         )
         self.assertEqual(request(self.application, path, "POST", body=body)[0], 403)
-        self.assertEqual(request(self.application, path, "POST", extra_headers=headers, body=b'{}')[0], 400)
-        with patch.object(self.application, "live_report", return_value={"target": "scanme.nmap.org", "analyst": {"analysis": {"summary": "Verified."}}}) as live:
-            status, _, data = request(self.application, path, "POST", extra_headers=headers, body=body)
+        self.assertEqual(
+            request(self.application, path, "POST", extra_headers=headers, body=b"{}")[0], 400
+        )
+        with patch.object(
+            self.application,
+            "live_report",
+            return_value={
+                "target": "scanme.nmap.org",
+                "analyst": {"analysis": {"summary": "Verified."}},
+            },
+        ) as live:
+            status, _, data = request(
+                self.application, path, "POST", extra_headers=headers, body=body
+            )
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(data.splitlines()[-1])["result"]["target"], "scanme.nmap.org")
         self.assertEqual(live.call_args.args[:2], ("scanme.nmap.org", "openrouter"))
@@ -709,11 +766,25 @@ class TestUiModel(unittest.TestCase):
             "Content-Type: application/json\r\n"
             f"Content-Length: {len(body)}\r\n"
         )
-        refused = body.replace(b'true', b'false')
-        refused_headers = headers.replace(f"Content-Length: {len(body)}", f"Content-Length: {len(refused)}")
-        self.assertEqual(request(self.application, path, "POST", extra_headers=refused_headers, body=refused)[0], 400)
-        with patch.object(self.application, "live_report", return_value={"target": "scanme.nmap.org", "analyst": {"analysis": {"summary": "Verified."}}}) as live:
-            status, _, data = request(self.application, path, "POST", extra_headers=headers, body=body)
+        refused = body.replace(b"true", b"false")
+        refused_headers = headers.replace(
+            f"Content-Length: {len(body)}", f"Content-Length: {len(refused)}"
+        )
+        self.assertEqual(
+            request(self.application, path, "POST", extra_headers=refused_headers, body=refused)[0],
+            400,
+        )
+        with patch.object(
+            self.application,
+            "live_report",
+            return_value={
+                "target": "scanme.nmap.org",
+                "analyst": {"analysis": {"summary": "Verified."}},
+            },
+        ) as live:
+            status, _, data = request(
+                self.application, path, "POST", extra_headers=headers, body=body
+            )
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(data.splitlines()[-1])["result"]["target"], "scanme.nmap.org")
         self.assertEqual(live.call_args.args[:2], ("scanme.nmap.org", "groq"))
@@ -796,7 +867,9 @@ class TestUiExport(unittest.TestCase):
 
     def test_project_introduction_preserves_the_explicit_model_boundary(self) -> None:
         application = UiApplication(DATABASE, ROOT / "config", DEMO_RUN)
-        with patch.object(analyst, "analyze_target", side_effect=AssertionError("implicit model call")):
+        with patch.object(
+            analyst, "analyze_target", side_effect=AssertionError("implicit model call")
+        ):
             status, _, body = request(application, "/")
         document = body.decode("utf-8")
         self.assertEqual(status, 200)
@@ -821,7 +894,9 @@ class TestUiExport(unittest.TestCase):
         for key in ("cve_id", "base_vector", "base_score", "epss_percentile", "kev"):
             self.assertEqual(selected[0][key], selected[1][key], key)
         for score in selected:
-            panel = document.split(f'data-story-finding="{score["finding_id"]}"', 1)[1].split("</article>", 1)[0]
+            panel = document.split(f'data-story-finding="{score["finding_id"]}"', 1)[1].split(
+                "</article>", 1
+            )[0]
             parsed = EvidenceParser()
             parsed.feed(panel)
             self.assertIn(str(score["risk"]), parsed.blocks)
@@ -848,7 +923,9 @@ class TestUiExport(unittest.TestCase):
 
     def test_explanation_sections_keep_model_execution_explicit(self) -> None:
         application = UiApplication(DATABASE, ROOT / "config", DEMO_RUN)
-        with patch.object(analyst, "analyze_target", side_effect=AssertionError("implicit model call")):
+        with patch.object(
+            analyst, "analyze_target", side_effect=AssertionError("implicit model call")
+        ):
             status, _, body = request(application, "/")
         self.assertEqual(status, 200)
         document = body.decode("utf-8")
@@ -862,11 +939,19 @@ class TestUiExport(unittest.TestCase):
 
     def test_project_analysis_requires_review_before_execution(self) -> None:
         application = UiApplication(DATABASE, ROOT / "config", DEMO_RUN)
-        with patch.object(analyst, "analyze_target", side_effect=AssertionError("implicit model call")):
+        with patch.object(
+            analyst, "analyze_target", side_effect=AssertionError("implicit model call")
+        ):
             status, _, body = request(application, "/")
         self.assertEqual(status, 200)
         document = body.decode("utf-8")
-        for identifier in ("project-run-form", "project-run-review", "project-run-confirm", "run-confirm-start", "project-run-stop"):
+        for identifier in (
+            "project-run-form",
+            "project-run-review",
+            "project-run-confirm",
+            "run-confirm-start",
+            "project-run-stop",
+        ):
             self.assertEqual(document.count(f'id="{identifier}"'), 1)
         self.assertIn('name="analysis-scope" value="all"', document)
         self.assertIn("does not launch scanners, refresh feeds or recalculate scores", document)
@@ -884,7 +969,9 @@ class TestUiExport(unittest.TestCase):
         )
         scores = {score["finding_id"]: score for score in payload["scores"]}
         for finding in payload["findings"]:
-            detail = document.split(f'data-project-door-detail="{finding["id"]}"', 1)[1].split("</article>", 1)[0]
+            detail = document.split(f'data-project-door-detail="{finding["id"]}"', 1)[1].split(
+                "</article>", 1
+            )[0]
             parser = EvidenceParser()
             parser.feed(detail)
             self.assertIn(finding["evidence"], parser.blocks)
@@ -892,8 +979,8 @@ class TestUiExport(unittest.TestCase):
             self.assertIn(f'data-workflow-finding="{finding["id"]}"', detail)
             score = scores.get(finding["id"])
             if score:
-                self.assertIn(f'<strong>{score["risk"]}</strong>', detail)
-                self.assertIn(f'band-{score["band"].lower()}', detail)
+                self.assertIn(f"<strong>{score['risk']}</strong>", detail)
+                self.assertIn(f"band-{score['band'].lower()}", detail)
         self.assertIn("Synthetic records / not real-system findings", document)
         self.assertIn("not proof of an exploitable", document)
         self.assertEqual(payload, json.loads(request(application, f"/api/run/{DEMO_RUN}")[2]))
@@ -929,15 +1016,15 @@ class TestUiExport(unittest.TestCase):
         document = request(application, "/")[2].decode("utf-8")
         self.assertTrue(payload["scores"])
         for host in payload["hosts"]:
-            panel = document.split(f'data-asset-panel="{host["ip"]}"', 1)[1].split(
-                "</article>", 1
-            )[0]
+            panel = document.split(f'data-asset-panel="{host["ip"]}"', 1)[1].split("</article>", 1)[
+                0
+            ]
             scores = [score for score in payload["scores"] if score["host_ip"] == host["ip"]]
             if not scores:
                 self.assertIn("No scored finding recorded for this asset.", panel)
                 continue
             self.assertIn(f'data-priority-finding="{scores[0]["finding_id"]}"', panel)
-            self.assertIn(f'<strong>{scores[0]["risk"]}</strong>', panel)
+            self.assertIn(f"<strong>{scores[0]['risk']}</strong>", panel)
             parser = EvidenceParser()
             parser.feed(panel)
             finding = next(
@@ -1000,7 +1087,8 @@ class TestUiExport(unittest.TestCase):
         self.assertNotIn("from './analyst-client.js'", document)
         module_imports = re.findall(r"(?m)^import\s[^\n]*", document)
         self.assertEqual(module_imports, [], "offline export must inline every module")
-        self.assertIn("const initialiseCobeGlobe = (() =>", document)
+        self.assertIn("function initialiseCobeGlobe(assessment)", document)
+        self.assertIn("const createGlobe =", document)
         module_source = re.search(
             r'<script type="module">(.*?)</script>', document, re.DOTALL
         ).group(1)
@@ -1336,7 +1424,9 @@ class TestUiAssets(unittest.TestCase):
         tokens = (static / "tokens.css").read_text(encoding="utf-8")
         stylesheet = (static / "entry.css").read_text(encoding="utf-8")
         self.assertIn('--font-prose: "Instrument Sans", "Segoe UI", system-ui, sans-serif;', tokens)
-        self.assertIn('--font-evidence: "Geist Mono", Consolas, "Liberation Mono", monospace;', tokens)
+        self.assertIn(
+            '--font-evidence: "Geist Mono", Consolas, "Liberation Mono", monospace;', tokens
+        )
         self.assertRegex(stylesheet, r"\.evidence\s*\{[^}]*font-family:\s*var\(--font-evidence\)")
         self.assertRegex(stylesheet, r"\.inferred\s*\{[^}]*font-family:\s*var\(--font-prose\)")
         self.assertRegex(tokens, r'@font-face\s*\{\s*font-family: "Instrument Sans";')
@@ -1377,7 +1467,10 @@ class TestUiAssets(unittest.TestCase):
         for recorded in ("assessment.hosts", "assessment.scores", "base_vector", "epss_percentile"):
             with self.subTest(recorded=recorded):
                 self.assertIn(recorded, globe)
-        self.assertIn("initialiseCobeGlobe(bootstrap.assessment)", (static / "app.js").read_text(encoding="utf-8"))
+        self.assertIn(
+            "initialiseCobeGlobe(bootstrap.assessment)",
+            (static / "app.js").read_text(encoding="utf-8"),
+        )
         page = (static / "index.html").read_text(encoding="utf-8")
         self.assertIn("data-globe-status", page)
         self.assertIn("Positions are illustrative, not geolocated.", page)
@@ -1389,9 +1482,18 @@ class TestUiAssets(unittest.TestCase):
         self.assertLess(page.index('id="project-scenario"'), page.index('id="project-showcase"'))
         self.assertEqual(page.count('class="scenario-step"'), 3)
         self.assertIn("An illustration of the synthetic demo run", page)
-        self.assertEqual(page.count('role="img"', page.index('id="project-scenario"'), page.index('id="project-showcase"')), 3)
+        self.assertEqual(
+            page.count(
+                'role="img"',
+                page.index('id="project-scenario"'),
+                page.index('id="project-showcase"'),
+            ),
+            3,
+        )
         script = (static / "app.js").read_text(encoding="utf-8")
-        self.assertIn("window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;", script)
+        self.assertIn(
+            "window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;", script
+        )
         for removed in ("data-hero-track", "data-hero-scene", "initialiseHeroScene"):
             with self.subTest(removed=removed):
                 self.assertNotIn(removed, page + script)
@@ -1399,13 +1501,22 @@ class TestUiAssets(unittest.TestCase):
     def test_planet_journey_matches_artwork_and_respects_reduced_motion(self) -> None:
         static = ROOT / "vulnassess" / "ui" / "static"
         page = (static / "index.html").read_text(encoding="utf-8")
-        self.assertIn('<div class="planet-journey" data-planet-journey aria-hidden="true" hidden>', page)
+        self.assertIn(
+            '<div class="planet-journey" data-planet-journey aria-hidden="true" hidden>', page
+        )
         self.assertLess(page.index("data-planet-journey"), page.index('id="hero"'))
         script = (static / "app.js").read_text(encoding="utf-8")
         start = script.index("function initialisePlanetJourney()")
         journey = script[start : script.index("\n}\n", start)]
         self.assertIn("window.matchMedia('(prefers-reduced-motion: reduce)').matches", journey)
-        for measured in ("/ 1600", "/ 1050", "800 * scaleX", "2732 * scaleY", "2000 * scaleX", "* 0.797"):
+        for measured in (
+            "/ 1600",
+            "/ 1050",
+            "800 * scaleX",
+            "2732 * scaleY",
+            "2000 * scaleX",
+            "* 0.797",
+        ):
             with self.subTest(measured=measured):
                 self.assertIn(measured, journey)
         tokens = (static / "tokens.css").read_text(encoding="utf-8")

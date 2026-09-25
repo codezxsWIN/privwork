@@ -141,7 +141,9 @@ class TestOrchestrator(unittest.TestCase):
             self.assertEqual([host.ip for host in hosts], ["172.28.0.10"])
             self.assertTrue(hosts[0].services)
             self.assertEqual({finding.tool for finding in findings}, {"nmap", "nikto"})
-            self.assertTrue(all(Path(finding.provenance.raw_path).is_file() for finding in findings))
+            self.assertTrue(
+                all(Path(finding.provenance.raw_path).is_file() for finding in findings)
+            )
             self.assertEqual(summary["scans"][-1], result)
 
         self.assertEqual(code, 0)
@@ -199,10 +201,21 @@ class TestOrchestrator(unittest.TestCase):
                 ):
                     code = main(
                         [
-                            "--db", str(database), "--config", str(ROOT / "config"),
-                            "scan", "--run-id", "synthetic-partial", "--target-ip", target,
-                            "--out-dir", str(root / "captures"), "--canary-log", str(canary),
-                            "--execute", "--json",
+                            "--db",
+                            str(database),
+                            "--config",
+                            str(ROOT / "config"),
+                            "scan",
+                            "--run-id",
+                            "synthetic-partial",
+                            "--target-ip",
+                            target,
+                            "--out-dir",
+                            str(root / "captures"),
+                            "--canary-log",
+                            str(canary),
+                            "--execute",
+                            "--json",
                         ]
                     )
                 result = json.loads(stdout.getvalue())
@@ -254,7 +267,9 @@ class TestOrchestrator(unittest.TestCase):
 
     def test_explicitly_authorised_cidr_does_not_require_a_demo_target_name(self):
         with TemporaryDirectory() as directory:
-            scan_plan = plan(SETTINGS, "192.168.0.116", Path(directory) / "captures", tools=("nmap",))
+            scan_plan = plan(
+                SETTINGS, "192.168.0.116", Path(directory) / "captures", tools=("nmap",)
+            )
             self.assertEqual(scan_plan.target_ip, "192.168.0.116")
             self.assertEqual(scan_plan.discovery.argv[-1], "192.168.0.116")
             self.assertFalse((Path(directory) / "captures").exists())

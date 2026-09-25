@@ -342,10 +342,10 @@ class Settings:
             self._number(path, native.get(key), f"native_fallback.{key}", 0, 100)
         severities = {"Critical", "High", "Medium", "Low", "Informational"}
         for tool in ("nessus", "zap"):
-            severity_weights = self._mapping(
-                path, native.get(tool), f"native_fallback.{tool}"
+            severity_weights = self._mapping(path, native.get(tool), f"native_fallback.{tool}")
+            allowed_severities = severities - (
+                {"Informational"} if tool == "nessus" else {"Critical"}
             )
-            allowed_severities = severities - ({"Informational"} if tool == "nessus" else {"Critical"})
             self._unknown(path, severity_weights, allowed_severities, f"native_fallback.{tool}")
             for severity in allowed_severities:
                 self._number(

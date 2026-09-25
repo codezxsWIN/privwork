@@ -27,9 +27,7 @@ def _address(host: ET.Element) -> str | None:
         return None
 
 
-def parse_nessus_xml(
-    path: str | Path, run_id: str, host_ip: str | None = None
-) -> list[Finding]:
+def parse_nessus_xml(path: str | Path, run_id: str, host_ip: str | None = None) -> list[Finding]:
     """Require a recognizable export and a proven target IP before accepting records."""
     path, content = read_capture(path, "nessus")
     reject_xml_declarations(content, path, "nessus")
@@ -41,7 +39,9 @@ def parse_nessus_xml(
     if root.tag != "NessusClientData_v2" or root.find("Report") is None:
         raise AdapterError(f"nessus: {path} is not a .nessus XML scan export")
     if not root.findall("./Report/ReportHost"):
-        raise AdapterError(f"nessus: {path} has no ReportHost; target coverage cannot be established")
+        raise AdapterError(
+            f"nessus: {path} has no ReportHost; target coverage cannot be established"
+        )
 
     findings: list[Finding] = []
     index = 0
@@ -73,23 +73,33 @@ def parse_nessus_xml(
             title = (item.get("pluginName") or f"Nessus plugin {plugin_id}").strip()
             description = (item.findtext("description") or title).strip()
             output = (item.findtext("plugin_output") or "").strip()
-            cves = sorted({node.text.strip().upper() for node in item.findall("cve") if node.text and CVE.fullmatch(node.text.strip())})
-            findings.append(Finding.make(
-                host_ip=address,
-                port=port_number or None,
-                protocol=(item.get("protocol") or "").lower() or None,
-                tool="nessus",
-                tool_native_id=plugin_id,
-                title=title[:120],
-                description=description,
-                evidence=(f"{title}\n{output or description}").strip(),
-                cve_ids=cves,
-                cwe_ids=[],
-                reference_urls=[],
-                native_severity=SEVERITY[severity],
-                native_confidence=None,
-                first_seen="",
-                last_seen="",
-                provenance=Provenance(tool="nessus", raw_path=str(path), record_index=index, run_id=run_id),
-            ))
+            cves = sorted(
+                {
+                    node.text.strip().upper()
+                    for node in item.findall("cve")
+                    if node.text and CVE.fullmatch(node.text.strip())
+                }
+            )
+            findings.append(
+                Finding.make(
+                    host_ip=address,
+                    port=port_number or None,
+                    protocol=(item.get("protocol") or "").lower() or None,
+                    tool="nessus",
+                    tool_native_id=plugin_id,
+                    title=title[:120],
+                    description=description,
+                    evidence=(f"{title}\n{output or description}").strip(),
+                    cve_ids=cves,
+                    cwe_ids=[],
+                    reference_urls=[],
+                    native_severity=SEVERITY[severity],
+                    native_confidence=None,
+                    first_seen="",
+                    last_seen="",
+                    provenance=Provenance(
+                        tool="nessus", raw_path=str(path), record_index=index, run_id=run_id
+                    ),
+                )
+            )
     return findings

@@ -27,7 +27,7 @@ class TestNessusWorkflow(unittest.TestCase):
                 '<NessusClientData_v2><Report name="lab"><ReportHost name="172.28.0.12">'
                 '<ReportItem severity="3" pluginID="123" pluginName="Network weakness" '
                 'port="22" protocol="tcp"><plugin_output>Observed exposure</plugin_output>'
-                '</ReportItem></ReportHost></Report></NessusClientData_v2>'
+                "</ReportItem></ReportHost></Report></NessusClientData_v2>"
             ).encode()
 
             class MemoryConnection:
@@ -68,7 +68,7 @@ class TestNessusWorkflow(unittest.TestCase):
                 '<NessusClientData_v2><Report name="lab"><ReportHost name="172.28.0.12">'
                 '<ReportItem severity="3" pluginID="123" pluginName="Network weakness" '
                 'port="22" protocol="tcp"><plugin_output>Observed exposure</plugin_output>'
-                '</ReportItem></ReportHost></Report></NessusClientData_v2>'
+                "</ReportItem></ReportHost></Report></NessusClientData_v2>"
             ).encode()
             result = app.import_nessus_report("nessus-example", "172.28.0.12", report)
             self.assertEqual(result["import"]["findings"]["nessus"], 1)
@@ -77,7 +77,12 @@ class TestNessusWorkflow(unittest.TestCase):
                 self.assertEqual(store.findings("nessus-example")[0].tool, "nessus")
                 self.assertEqual(len(store.profiles("nessus-example")), 1)
                 self.assertEqual(len(store.scores("nessus-example")), 1)
-                self.assertEqual(store.run_info("nessus-example")["summary"]["imports"][-1]["findings"]["nessus"], 1)
+                self.assertEqual(
+                    store.run_info("nessus-example")["summary"]["imports"][-1]["findings"][
+                        "nessus"
+                    ],
+                    1,
+                )
             with self.assertRaises(AdapterError):
                 app.import_nessus_report("nessus-example", "172.28.0.10", report)
 
@@ -91,7 +96,7 @@ class TestNessusWorkflow(unittest.TestCase):
                 '<NessusClientData_v2><Report name="lab"><ReportHost name="172.28.0.12">'
                 '<ReportItem severity="2" pluginID="456" pluginName="Second weakness" '
                 'port="80" protocol="tcp"><description>Observed weakness</description>'
-                '</ReportItem></ReportHost></Report></NessusClientData_v2>'
+                "</ReportItem></ReportHost></Report></NessusClientData_v2>"
             ).encode()
             result = app.import_nessus_report("nessus-new", "172.28.0.12", report, new_run=True)
             self.assertEqual(result["run_id"], "nessus-new")
@@ -113,8 +118,8 @@ class TestNessusWorkflow(unittest.TestCase):
                 '<NessusClientData_v2><Report name="lab"><ReportHost name="172.28.0.12">'
                 '<ReportItem severity="3" pluginID="789" pluginName="Known weakness" '
                 'port="80" protocol="tcp"><cve>CVE-1999-9001</cve>'
-                '<plugin_output>Observed service</plugin_output></ReportItem>'
-                '</ReportHost></Report></NessusClientData_v2>'
+                "<plugin_output>Observed service</plugin_output></ReportItem>"
+                "</ReportHost></Report></NessusClientData_v2>"
             ).encode()
             app.import_nessus_report("nessus-intel", "172.28.0.12", report, new_run=True)
             with Store(database) as store:

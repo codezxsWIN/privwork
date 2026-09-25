@@ -51,11 +51,23 @@ def run(
     with TemporaryDirectory(prefix="vulnassess-live-") as directory:
         capture = Path(directory) / "nmap.xml"
         command = [
-            binary, "-n", "-Pn", "-sT", "--top-ports", "100", "-sV",
-            "--version-light", "-T3", "-oX", str(capture), target_ip,
+            binary,
+            "-n",
+            "-Pn",
+            "-sT",
+            "--top-ports",
+            "100",
+            "-sV",
+            "--version-light",
+            "-T3",
+            "-oX",
+            str(capture),
+            target_ip,
         ]
         try:
-            completed = subprocess.run(command, capture_output=True, text=True, timeout=180, check=False)
+            completed = subprocess.run(
+                command, capture_output=True, text=True, timeout=180, check=False
+            )
         except subprocess.TimeoutExpired as error:
             raise ConfigError("Light Nmap scan timed out after 180 seconds") from error
         if completed.returncode != 0 or not capture.is_file():
@@ -65,17 +77,27 @@ def run(
     if len(matching) != 1:
         raise ConfigError("Nmap did not return exactly the pinned target")
     host = matching[0]
-    on_progress("scanner", "complete", f"{len(host.services)} open services; {len(findings)} vulnerability findings")
+    on_progress(
+        "scanner",
+        "complete",
+        f"{len(host.services)} open services; {len(findings)} vulnerability findings",
+    )
     if on_capture is not None:
-        on_capture({
-            "target": target,
-            "resolved_ip": target_ip,
-            "services": [service.to_json() for service in host.services],
-            "finding_count": len(findings),
-        })
+        on_capture(
+            {
+                "target": target,
+                "resolved_ip": target_ip,
+                "services": [service.to_json() for service in host.services],
+                "finding_count": len(findings),
+            }
+        )
     on_progress("context", "running", "Inferring context from the observed services")
-    profile = context.build_profile(host, findings, settings.scope, settings.roles, settings.controls)
-    on_progress("context", "complete", f"Role {profile.role.value}; exposure {profile.exposure.value}")
+    profile = context.build_profile(
+        host, findings, settings.scope, settings.roles, settings.controls
+    )
+    on_progress(
+        "context", "complete", f"Role {profile.role.value}; exposure {profile.exposure.value}"
+    )
     payload = {
         "hosts": [host.to_json()],
         "findings": [finding.to_json() for finding in findings],
@@ -91,21 +113,27 @@ def run(
     model_case, _, _ = analyst.build_case(payload, target_ip)
     decision_frame = analyst.build_decision_frame(model_case)
     if on_capture is not None:
-        on_capture({
-            "target": target, "resolved_ip": target_ip,
-            "services": [service.to_json() for service in host.services],
-            "finding_count": len(findings), "decision_frame": decision_frame,
-        })
+        on_capture(
+            {
+                "target": target,
+                "resolved_ip": target_ip,
+                "services": [service.to_json() for service in host.services],
+                "finding_count": len(findings),
+                "decision_frame": decision_frame,
+            }
+        )
     if on_case is not None:
-        on_case({
-            "target": target,
-            "resolved_ip": target_ip,
-            "scan_profile": "Nmap top 100 TCP ports, light service detection",
-            "services": [service.to_json() for service in host.services],
-            "finding_count": len(findings),
-            "decision_frame": decision_frame,
-            "payload": payload,
-        })
+        on_case(
+            {
+                "target": target,
+                "resolved_ip": target_ip,
+                "scan_profile": "Nmap top 100 TCP ports, light service detection",
+                "services": [service.to_json() for service in host.services],
+                "finding_count": len(findings),
+                "decision_frame": decision_frame,
+                "payload": payload,
+            }
+        )
     result = analyst.analyze_target(payload, target_ip, provider=provider, on_progress=on_progress)
     return {
         "target": target,

@@ -28,7 +28,7 @@ def main() -> int:
 
     try:
         application = UiApplication(arguments.db, arguments.config, arguments.run)
-        database = application.database
+        database = Path(application.database)
         before = sha256(database.read_bytes()).hexdigest()
         server = UiServer(application, port=0)
     except ConfigError as error:

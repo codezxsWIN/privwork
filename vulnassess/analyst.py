@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any, Callable, Protocol
 
-from vulnassess.context import interpreted_control
+from vulnassess.context_facts import interpreted_control
 from vulnassess.errors import ConfigError, LLMUnavailable
 from vulnassess.explain import (
     DEFAULT_HOST,
@@ -16,8 +16,8 @@ from vulnassess.explain import (
     allowed_numbers,
     sanitise,
 )
-from vulnassess.openrouter import OpenRouterClient
 from vulnassess.groq import GroqClient
+from vulnassess.openrouter import OpenRouterClient
 
 MAX_EVIDENCE = 128
 MAX_TEXT = 200
@@ -32,8 +32,13 @@ UNSUPPORTED_ASSURANCE = re.compile(
     re.IGNORECASE,
 )
 UNKNOWN_CONTROL_ASSERTIONS = {
-    "auth_required": re.compile(r"\bunauthenticated\s+(?:ssh|http|service|access)\b|\b(?:no|without)\s+authentication\b(?!\s+evidence)", re.IGNORECASE),
-    "rate_limiting": re.compile(r"\b(?:no|without)\s+rate[ -]limiting\b(?!\s+evidence)", re.IGNORECASE),
+    "auth_required": re.compile(
+        r"\bunauthenticated\s+(?:ssh|http|service|access)\b|\b(?:no|without)\s+authentication\b(?!\s+evidence)",
+        re.IGNORECASE,
+    ),
+    "rate_limiting": re.compile(
+        r"\b(?:no|without)\s+rate[ -]limiting\b(?!\s+evidence)", re.IGNORECASE
+    ),
     "tls": re.compile(r"\b(?:no|without)\s+tls\b(?!\s+evidence)", re.IGNORECASE),
     "waf": re.compile(r"\b(?:no|without)\s+waf\b(?!\s+evidence)", re.IGNORECASE),
 }
@@ -59,7 +64,12 @@ ANALYSIS_SCHEMA: dict[str, object] = {
             "required": ["explanation", "evidence_ids"],
             "properties": {
                 "explanation": {"type": "string"},
-                "evidence_ids": {"type": "array", "minItems": 1, "maxItems": 4, "items": {"type": "string"}},
+                "evidence_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 4,
+                    "items": {"type": "string"},
+                },
             },
         },
         "recommended_actions": {
@@ -99,7 +109,13 @@ ANALYSIS_SCHEMA: dict[str, object] = {
             "items": {
                 "type": "object",
                 "additionalProperties": False,
-                "required": ["hypothesis", "verification", "alternative", "finding_ids", "evidence_ids"],
+                "required": [
+                    "hypothesis",
+                    "verification",
+                    "alternative",
+                    "finding_ids",
+                    "evidence_ids",
+                ],
                 "properties": {
                     "hypothesis": {"type": "string"},
                     "verification": {"type": "string"},
@@ -197,8 +213,7 @@ def build_case(
         "exposure": dict(profile["exposure"]),
         "segment": profile.get("segment"),
         "controls": {
-            key: interpreted_control(value)
-            for key, value in profile.get("controls", {}).items()
+            key: interpreted_control(value) for key, value in profile.get("controls", {}).items()
         },
         "manual": {key: dict(value) for key, value in profile.get("manual", {}).items()},
     }
@@ -302,7 +317,15 @@ def build_case(
             # deltas stay in the store and the evidence quote carries the reason.
             brief_score = {
                 key: score[key]
-                for key in ("base_score", "env_score", "env_modifications", "risk", "band", "reason", "weights_hash")
+                for key in (
+                    "base_score",
+                    "env_score",
+                    "env_modifications",
+                    "risk",
+                    "band",
+                    "reason",
+                    "weights_hash",
+                )
                 if key in score
             }
             if "reason" in brief_score:
@@ -354,35 +377,45 @@ def build_decision_frame(case: dict[str, Any]) -> dict[str, Any]:
     context = case["context"]
 
     def feature(item: dict[str, Any]) -> dict[str, Any]:
-        return {
-            key: item.get(key)
-            for key in ("value", "confidence", "source", "evidence_id")
-        }
+        return {key: item.get(key) for key in ("value", "confidence", "source", "evidence_id")}
 
     priorities = []
     unscored = []
     for finding in case["findings"]:
         score = finding.get("deterministic_score")
         if score is None:
-            unscored.append({
-                "finding_id": finding["id"], "title": finding["title"],
-                "finding_evidence_id": finding["evidence_id"],
-            })
+            unscored.append(
+                {
+                    "finding_id": finding["id"],
+                    "title": finding["title"],
+                    "finding_evidence_id": finding["evidence_id"],
+                }
+            )
             continue
-        priorities.append({
-            "finding_id": finding["id"], "title": finding["title"],
-            "risk": score["risk"], "band": score["band"],
-            "base_score": score.get("base_score"),
-            "env_score": score.get("env_score"),
-            "env_modifications": score.get("env_modifications", {}),
-            "reason": score.get("reason"),
-            "score_evidence_id": score["evidence_id"],
-            "finding_evidence_id": finding["evidence_id"],
-        })
+        priorities.append(
+            {
+                "finding_id": finding["id"],
+                "title": finding["title"],
+                "risk": score["risk"],
+                "band": score["band"],
+                "base_score": score.get("base_score"),
+                "env_score": score.get("env_score"),
+                "env_modifications": score.get("env_modifications", {}),
+                "reason": score.get("reason"),
+                "score_evidence_id": score["evidence_id"],
+                "finding_evidence_id": finding["evidence_id"],
+            }
+        )
     priorities.sort(key=lambda item: (-item["risk"], item["finding_id"]))
     for rank, item in enumerate(priorities, 1):
         item["rank"] = rank
-    mode = "scored_findings" if priorities else "unscored_findings" if case["findings"] else "verification_only"
+    mode = (
+        "scored_findings"
+        if priorities
+        else "unscored_findings"
+        if case["findings"]
+        else "verification_only"
+    )
     return {
         "mode": mode,
         "context": {
@@ -394,10 +427,16 @@ def build_decision_frame(case: dict[str, Any]) -> dict[str, Any]:
         "priorities": priorities,
         "unscored_findings": unscored,
         "verification_candidates": [
-            {"port": item["port"], "protocol": item["protocol"],
-             "service": item.get("name"), "evidence_id": item["evidence_id"]}
+            {
+                "port": item["port"],
+                "protocol": item["protocol"],
+                "service": item.get("name"),
+                "evidence_id": item["evidence_id"],
+            }
             for item in case["services"]
-        ] if mode == "verification_only" else [],
+        ]
+        if mode == "verification_only"
+        else [],
         "scanner_coverage": case["scanner_coverage"],
         "case_coverage": case["coverage"],
     }
@@ -407,8 +446,12 @@ def build_prompt(case: dict[str, Any], evidence: list[dict[str, str]], alias_cou
     evidence_count = len(evidence)
     frame = json.dumps(build_decision_frame(case), ensure_ascii=True)
     untrusted = (
-        ("DECISION FRAME (derived index, not new evidence):\n" + frame + "\nFULL CASE AND EVIDENCE:\n"
-         + json.dumps({"case": case, "evidence": evidence}, ensure_ascii=True))
+        (
+            "DECISION FRAME (derived index, not new evidence):\n"
+            + frame
+            + "\nFULL CASE AND EVIDENCE:\n"
+            + json.dumps({"case": case, "evidence": evidence}, ensure_ascii=True)
+        )
         .replace("<", "\\u003c")
         .replace(">", "\\u003e")
         .replace("&", "\\u0026")
@@ -507,7 +550,8 @@ def validate_analysis(
         raise LLMUnavailable("analyst context effect must be an object")
     effect_ids = effect.get("evidence_ids")
     if (
-        not isinstance(effect_ids, list) or not effect_ids
+        not isinstance(effect_ids, list)
+        or not effect_ids
         or not all(isinstance(identity, str) for identity in effect_ids)
         or not set(effect_ids) <= evidence_ids
     ):
@@ -589,18 +633,26 @@ def validate_analysis(
         verification = _validated_text(item.get("verification"), "verification", 300)
         alternative = _validated_text(item.get("alternative"), "alternative", 240)
         if verification.split()[0].casefold().rstrip(":") not in {
-            "check", "compare", "review", "inspect", "confirm", "verify", "validate",
+            "check",
+            "compare",
+            "review",
+            "inspect",
+            "confirm",
+            "verify",
+            "validate",
         }:
             raise LLMUnavailable("analyst investigation needs a testable verification action")
         if hypothesis.casefold() in {alternative.casefold(), str(result["summary"]).casefold()}:
             raise LLMUnavailable("analyst investigation repeats the summary or alternative")
-        validated_investigations.append({
-            "hypothesis": hypothesis,
-            "verification": verification,
-            "alternative": alternative,
-            "finding_ids": cited_findings,
-            "evidence_ids": cited_evidence,
-        })
+        validated_investigations.append(
+            {
+                "hypothesis": hypothesis,
+                "verification": verification,
+                "alternative": alternative,
+                "finding_ids": cited_findings,
+                "evidence_ids": cited_evidence,
+            }
+        )
     return {
         "summary": _validated_text(result["summary"], "summary", 600),
         "confidence": confidence,
@@ -630,9 +682,7 @@ def validate_grounding(result: dict[str, Any], case: dict[str, Any]) -> None:
     numbers = allowed_numbers({"case": json.dumps(case, ensure_ascii=True)})
     prose = [result["summary"], result["context_effect"]["explanation"], *result["uncertainties"]]
     prose.extend(
-        item[field]
-        for item in result["recommended_actions"]
-        for field in ("action", "reason")
+        item[field] for item in result["recommended_actions"] for field in ("action", "reason")
     )
     prose.extend(item["observation"] for item in result["correlations"])
     prose.extend(
@@ -645,9 +695,7 @@ def validate_grounding(result: dict[str, Any], case: dict[str, Any]) -> None:
             raise LLMUnavailable("analyst output contains unsupported CVE identifiers")
         if set(NUMBER.findall(text)) - numbers:
             raise LLMUnavailable("analyst output contains unsupported numbers")
-    context_ids = {
-        case["context"][key]["evidence_id"] for key in ("role", "exposure")
-    }
+    context_ids = {case["context"][key]["evidence_id"] for key in ("role", "exposure")}
     if not context_ids & set(result["context_effect"]["evidence_ids"]):
         raise LLMUnavailable("analyst context effect lacks role or exposure context evidence")
     asserted_text = [result["summary"], result["context_effect"]["explanation"]]
@@ -656,7 +704,9 @@ def validate_grounding(result: dict[str, Any], case: dict[str, Any]) -> None:
     for key, pattern in UNKNOWN_CONTROL_ASSERTIONS.items():
         if case["context"]["controls"].get(key, {}).get("value") is None:
             if any(pattern.search(text) for text in asserted_text):
-                raise LLMUnavailable(f"analyst output makes an unsupported control assertion about {key}")
+                raise LLMUnavailable(
+                    f"analyst output makes an unsupported control assertion about {key}"
+                )
     if not case["findings"]:
         exposure_id = case["context"]["exposure"]["evidence_id"]
         if exposure_id not in result["context_effect"]["evidence_ids"]:
@@ -694,8 +744,11 @@ def analyze_target(
     ):
         raise ConfigError(f"MISSING: host {host_ip!r} in selected run")
     active_client = client or (
-        OpenRouterClient() if provider == "openrouter" else
-        GroqClient() if provider == "groq" else OllamaClient(ollama_host, model, timeout=180.0)
+        OpenRouterClient()
+        if provider == "openrouter"
+        else GroqClient()
+        if provider == "groq"
+        else OllamaClient(ollama_host, model, timeout=180.0)
     )
     source = getattr(active_client, "source", "custom_grounded_analysis")
     if not isinstance(source, str) or not source.strip():
@@ -708,7 +761,8 @@ def analyze_target(
     findings_count = len(case["findings"])
     detail = (
         f"{findings_count} findings and {len(evidence)} evidence items selected"
-        if findings_count else f"zero vulnerability findings; assessing {len(case['services'])} observed services and context only"
+        if findings_count
+        else f"zero vulnerability findings; assessing {len(case['services'])} observed services and context only"
     )
     progress("evidence", "complete", detail)
     progress("prompt", "running", "Preparing the bounded, grounded request")
@@ -718,7 +772,9 @@ def analyze_target(
             f"analyst case for {host_ip!r} builds a {len(prompt)}-character prompt, "
             f"over the {MAX_PROMPT_CHARS}-character budget"
         )
-    progress("prompt", "complete", f"Request prepared · {len(prompt)} / {MAX_PROMPT_CHARS} characters")
+    progress(
+        "prompt", "complete", f"Request prepared · {len(prompt)} / {MAX_PROMPT_CHARS} characters"
+    )
     progress("generation", "running", "Waiting for the selected model response")
     generation_options: dict[str, Any] = {}
     if on_progress is not None:
@@ -745,10 +801,16 @@ def analyze_target(
             if attempt + 1 >= max_attempts or len(prompt) + len(correction) > MAX_PROMPT_CHARS:
                 raise
             prompt += correction
-            progress("validation", "running", "Unsupported claim detected; requesting one correction")
+            progress(
+                "validation", "running", "Unsupported claim detected; requesting one correction"
+            )
             progress("generation", "running", "Requesting one corrected model response")
+    else:
+        raise LLMUnavailable("analyst response did not pass evidence validation")
     coverage = case["coverage"]
-    if any(coverage[key] for key in ("findings_omitted", "services_omitted", "intelligence_omitted")):
+    if any(
+        coverage[key] for key in ("findings_omitted", "services_omitted", "intelligence_omitted")
+    ):
         notice = (
             f"Partial coverage: {coverage['findings_included']}/{coverage['findings_total']} "
             f"findings included; {coverage['services_omitted']} services and "
@@ -759,7 +821,11 @@ def analyze_target(
     for section in ("recommended_actions", "correlations", "investigations"):
         for item in result[section]:
             item["finding_ids"] = sorted(alias_map[a] for a in item["finding_ids"])
-    progress("validation", "complete", f"Citations checked against {len(evidence)} evidence items; stored scores unchanged")
+    progress(
+        "validation",
+        "complete",
+        f"Citations checked against {len(evidence)} evidence items; stored scores unchanged",
+    )
     return {
         "host_ip": host_ip,
         "model": active_client.model,

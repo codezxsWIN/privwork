@@ -63,15 +63,42 @@ def export_html(application: UiApplication, destination: str | Path) -> Path:
     except OSError as error:
         raise ConfigError(f"cannot read UI artwork {artwork_path}") from error
     style = style.replace("/static/project-horizon.png", f"data:image/png;base64,{artwork}")
+    for name in (
+        "InstrumentSans-Variable.woff2",
+        "InstrumentSans-VariableItalic.woff2",
+        "GeistMono-Variable.woff2",
+    ):
+        font_path = STATIC_ROOT / "vendor" / "fonts" / name
+        try:
+            font = base64.b64encode(font_path.read_bytes()).decode("ascii")
+        except OSError as error:
+            raise ConfigError(f"cannot read UI font {font_path}") from error
+        style = style.replace(f"/static/vendor/fonts/{name}", f"data:font/woff2;base64,{font}")
     app = _asset("app.js")
     modules: list[str] = []
     for import_line, name in (
+        ("import { initialiseCobeGlobe } from './cobe-globe.js';", "cobe-globe.js"),
         ("import { scoreVector, sandbox } from './cvss31.js';", "cvss31.js"),
         ("import { createAnalysisQueue } from './analyst-client.js';", "analyst-client.js"),
     ):
         if app.count(import_line) != 1:
             raise ConfigError(f"UI export requires the known local {name} module import")
-        modules.append(_asset(name))
+        module = _asset(name)
+        if name == "cobe-globe.js":
+            vendor = _asset("vendor/cobe.js")
+            default_export = re.search(
+                r"export\s*\{\s*([A-Za-z_$][\w$]*)\s+as\s+default\s*\};?\s*$",
+                vendor,
+            )
+            vendor_import = "import createGlobe from './vendor/cobe.js';"
+            if default_export is None or module.count(vendor_import) != 1:
+                raise ConfigError("UI export requires the known local Cobe module exports")
+            vendor = (
+                vendor[: default_export.start()] + f"\nconst createGlobe = {default_export[1]};\n"
+            )
+            module = module.replace(vendor_import, "", 1)
+            modules.append(vendor)
+        modules.append(module)
         app = app.replace(import_line, "", 1)
     script = "\n".join([*modules, app])
     for name in ("tokens.css", "workbench.css"):
@@ -79,7 +106,7 @@ def export_html(application: UiApplication, destination: str | Path) -> Path:
     document = document.replace('<script type="module" src="/static/app.js"></script>', "")
     policy = (
         f"default-src 'none'; script-src 'sha256-{_hash_source(script)}'; "
-        f"style-src 'sha256-{_hash_source(style)}'; img-src data:; connect-src 'none'; "
+        f"style-src 'sha256-{_hash_source(style)}'; img-src data:; font-src data:; connect-src 'none'; "
         "base-uri 'none'; form-action 'none'"
     )
     document = document.replace(

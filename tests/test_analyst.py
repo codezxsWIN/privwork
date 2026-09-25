@@ -117,7 +117,10 @@ def test_legacy_unobserved_controls_are_unknown_in_model_case():
     payload = demo_payload()
     profile = next(item for item in payload["context"] if item["host_ip"] == "172.28.0.12")
     profile["controls"]["waf"] = {
-        "value": False, "confidence": 0.5, "source": "rule", "evidence": "none observed"
+        "value": False,
+        "confidence": 0.5,
+        "source": "rule",
+        "evidence": "none observed",
     }
     original = copy.deepcopy(payload)
 
@@ -129,7 +132,12 @@ def test_legacy_unobserved_controls_are_unknown_in_model_case():
 
 
 def test_explicit_negative_control_evidence_remains_false():
-    record = {"value": False, "confidence": 0.95, "source": "manual", "evidence": "Owner confirmed no WAF"}
+    record = {
+        "value": False,
+        "confidence": 0.95,
+        "source": "manual",
+        "evidence": "Owner confirmed no WAF",
+    }
 
     assert analyst.interpreted_control(record) == record
 
@@ -161,7 +169,11 @@ def test_context_effect_must_cite_recorded_context_not_just_a_service():
 
 def test_analysis_can_assess_live_services_when_scan_has_no_vulnerability_findings():
     payload = demo_payload()
-    payload["scanner_coverage"] = {"nmap": "top 100 TCP ports", "zap": "not run", "nikto": "not run"}
+    payload["scanner_coverage"] = {
+        "nmap": "top 100 TCP ports",
+        "zap": "not run",
+        "nikto": "not run",
+    }
     payload["findings"] = []
     payload["scores"] = []
     payload["enrichments"] = []
@@ -175,13 +187,15 @@ def test_analysis_can_assess_live_services_when_scan_has_no_vulnerability_findin
             "explanation": "Internet exposure makes the observed services worth verifying before internal-only assets.",
             "evidence_ids": [exposure_id],
         },
-        "recommended_actions": [{
-            "order": 1,
-            "action": "Verify service versions and restrict exposure to intended users.",
-            "reason": "The scan observed internet-facing SSH and HTTP services only.",
-            "finding_ids": [],
-            "evidence_ids": [service_id, exposure_id],
-        }],
+        "recommended_actions": [
+            {
+                "order": 1,
+                "action": "Verify service versions and restrict exposure to intended users.",
+                "reason": "The scan observed internet-facing SSH and HTTP services only.",
+                "finding_ids": [],
+                "evidence_ids": [service_id, exposure_id],
+            }
+        ],
         "correlations": [],
         "uncertainties": ["No exploit checks or authenticated tests were run."],
     }
@@ -207,16 +221,18 @@ def test_zero_finding_case_rejects_clean_bill_of_health():
             "explanation": "Internet exposure increases verification urgency.",
             "evidence_ids": [case["context"]["exposure"]["evidence_id"]],
         },
-        "recommended_actions": [{
-            "order": 1,
-            "action": "Review the exposed service.",
-            "reason": "Service was observed on an internet-facing host.",
-            "finding_ids": [],
-            "evidence_ids": [
-                case["services"][0]["evidence_id"],
-                case["context"]["exposure"]["evidence_id"],
-            ],
-        }],
+        "recommended_actions": [
+            {
+                "order": 1,
+                "action": "Review the exposed service.",
+                "reason": "Service was observed on an internet-facing host.",
+                "finding_ids": [],
+                "evidence_ids": [
+                    case["services"][0]["evidence_id"],
+                    case["context"]["exposure"]["evidence_id"],
+                ],
+            }
+        ],
         "correlations": [],
         "uncertainties": ["No authenticated testing was performed."],
     }
@@ -237,13 +253,15 @@ def test_zero_finding_context_effect_cites_exposure_and_action_cites_service():
             "explanation": "Internet exposure increases verification urgency.",
             "evidence_ids": [case["context"]["exposure"]["evidence_id"]],
         },
-        "recommended_actions": [{
-            "order": 1,
-            "action": "Review the exposed SSH service.",
-            "reason": "The service is reachable from the internet.",
-            "finding_ids": [],
-            "evidence_ids": [case["services"][0]["evidence_id"]],
-        }],
+        "recommended_actions": [
+            {
+                "order": 1,
+                "action": "Review the exposed SSH service.",
+                "reason": "The service is reachable from the internet.",
+                "finding_ids": [],
+                "evidence_ids": [case["services"][0]["evidence_id"]],
+            }
+        ],
         "correlations": [],
         "uncertainties": ["No authenticated testing was performed."],
     }
@@ -270,13 +288,15 @@ def test_unknown_auth_control_cannot_be_asserted_absent_in_action_reason():
             "explanation": "Internet exposure raises verification urgency.",
             "evidence_ids": [case["context"]["exposure"]["evidence_id"]],
         },
-        "recommended_actions": [{
-            "order": 1,
-            "action": "Review SSH access policy.",
-            "reason": "Unauthenticated SSH is exposed to the internet.",
-            "finding_ids": [],
-            "evidence_ids": [case["services"][0]["evidence_id"]],
-        }],
+        "recommended_actions": [
+            {
+                "order": 1,
+                "action": "Review SSH access policy.",
+                "reason": "Unauthenticated SSH is exposed to the internet.",
+                "finding_ids": [],
+                "evidence_ids": [case["services"][0]["evidence_id"]],
+            }
+        ],
         "correlations": [],
         "uncertainties": ["Authentication was not assessed."],
     }
@@ -304,14 +324,19 @@ def test_invalid_control_assertion_gets_one_grounded_correction_attempt():
     result = analyst.analyze_target(payload, "172.28.0.12", client)
     assert len(client.prompts) == 2
     assert "unsupported control assertion about tls" in client.prompts[1]
-    assert result["analysis"]["recommended_actions"][0]["reason"] == good["recommended_actions"][0]["reason"]
+    assert (
+        result["analysis"]["recommended_actions"][0]["reason"]
+        == good["recommended_actions"][0]["reason"]
+    )
 
 
 def test_local_model_wait_is_bounded_before_generation():
     payload = demo_payload()
     from unittest.mock import patch
 
-    with patch.object(analyst, "OllamaClient", side_effect=RuntimeError("constructor checked")) as client:
+    with patch.object(
+        analyst, "OllamaClient", side_effect=RuntimeError("constructor checked")
+    ) as client:
         with pytest.raises(RuntimeError, match="constructor checked"):
             analyst.analyze_target(payload, "172.28.0.12", provider="ollama")
     assert client.call_args.kwargs["timeout"] <= 180
@@ -351,13 +376,15 @@ def test_cited_investigation_is_returned_with_canonical_finding_identity():
     alias = case["findings"][0]["id"]
     citation = evidence[0]["id"]
     response = valid_result(alias, citation)
-    response["investigations"] = [{
-        "hypothesis": "The exposed service may need a configuration review.",
-        "verification": "Review the service configuration and compare it with the approved baseline.",
-        "alternative": "The observed exposure may be an intentional lab configuration.",
-        "finding_ids": [alias],
-        "evidence_ids": [citation],
-    }]
+    response["investigations"] = [
+        {
+            "hypothesis": "The exposed service may need a configuration review.",
+            "verification": "Review the service configuration and compare it with the approved baseline.",
+            "alternative": "The observed exposure may be an intentional lab configuration.",
+            "finding_ids": [alias],
+            "evidence_ids": [citation],
+        }
+    ]
     result = analyst.analyze_target(payload, "172.28.0.12", FakeClient(response))
     investigation = result["analysis"]["investigations"][0]
     assert investigation["finding_ids"] == [alias_map[alias]]
@@ -373,13 +400,15 @@ def test_investigation_cannot_cite_unknown_evidence_or_finding():
     ]:
         response = valid_result("F1", "E1")
         response["context_effect"]["evidence_ids"] = ["E1"]
-        response["investigations"] = [{
-            "hypothesis": "Review the observed service.",
-            "verification": "Check the approved configuration.",
-            "alternative": "This service may be intentional.",
-            "finding_ids": finding_ids,
-            "evidence_ids": evidence_ids,
-        }]
+        response["investigations"] = [
+            {
+                "hypothesis": "Review the observed service.",
+                "verification": "Check the approved configuration.",
+                "alternative": "This service may be intentional.",
+                "finding_ids": finding_ids,
+                "evidence_ids": evidence_ids,
+            }
+        ]
         with pytest.raises(LLMUnavailable, match=expected):
             analyst.validate_analysis(response, {"F1"}, {"E1"})
 
@@ -388,13 +417,15 @@ def test_investigation_rejects_a_non_action_and_repeated_claims():
     response = valid_result("F1", "E1")
     response["context_effect"]["evidence_ids"] = ["E1"]
     response["summary"] = "No vulnerability found."
-    response["investigations"] = [{
-        "hypothesis": "No vulnerability found.",
-        "verification": "No evidence of exploitation.",
-        "alternative": "No vulnerability found.",
-        "finding_ids": [],
-        "evidence_ids": ["E1"],
-    }]
+    response["investigations"] = [
+        {
+            "hypothesis": "No vulnerability found.",
+            "verification": "No evidence of exploitation.",
+            "alternative": "No vulnerability found.",
+            "finding_ids": [],
+            "evidence_ids": ["E1"],
+        }
+    ]
     with pytest.raises(LLMUnavailable, match="testable verification"):
         analyst.validate_analysis(response, {"F1"}, {"E1"})
 
@@ -487,8 +518,7 @@ def test_large_case_is_prioritized_bounded_and_explicitly_partial() -> None:
     score = next(item for item in payload["scores"] if item["finding_id"] == base["id"])
     total = 150
     payload["findings"] = [
-        {**copy.deepcopy(base), "id": f"synthetic-finding-{index:04d}"}
-        for index in range(total)
+        {**copy.deepcopy(base), "id": f"synthetic-finding-{index:04d}"} for index in range(total)
     ]
     payload["scores"] = [
         {**copy.deepcopy(score), "finding_id": item["id"], "risk": (index + 1) * 100 / total}

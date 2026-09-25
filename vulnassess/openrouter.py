@@ -30,7 +30,7 @@ def load_api_key() -> str:
         raise ConfigError("Cannot read the local .env file") from error
     for line in lines:
         if line.startswith("OPENROUTER_API_KEY="):
-            return line.partition("=")[2].strip().strip('"\'')
+            return line.partition("=")[2].strip().strip("\"'")
     return ""
 
 
@@ -88,7 +88,9 @@ class OpenRouterClient:
                 raw = response.read(MAX_RESPONSE_BYTES + 1)
         except urllib.error.HTTPError as error:
             if error.code == 429:
-                raise LLMUnavailable("DeepSeek free-model rate limit reached; local analysis remains available") from error
+                raise LLMUnavailable(
+                    "DeepSeek free-model rate limit reached; local analysis remains available"
+                ) from error
             if error.code == 404:
                 try:
                     detail = json.loads(error.read(4096)).get("error", {}).get("message", "")
@@ -99,12 +101,18 @@ class OpenRouterClient:
                         "OpenRouter reports DeepSeek V4 Flash 0731 is unavailable for free. "
                         "Its paid endpoint was not used."
                     ) from error
-                raise LLMUnavailable("DeepSeek free model has no available endpoint; no paid fallback attempted") from error
+                raise LLMUnavailable(
+                    "DeepSeek free model has no available endpoint; no paid fallback attempted"
+                ) from error
             if error.code in (401, 403):
                 raise LLMUnavailable("OpenRouter rejected the API key or privacy policy") from error
-            raise LLMUnavailable(f"OpenRouter request failed with HTTP {error.code}; no paid fallback attempted") from error
+            raise LLMUnavailable(
+                f"OpenRouter request failed with HTTP {error.code}; no paid fallback attempted"
+            ) from error
         except (urllib.error.URLError, OSError, TimeoutError) as error:
-            raise LLMUnavailable("OpenRouter is unavailable; no retry or paid fallback attempted") from error
+            raise LLMUnavailable(
+                "OpenRouter is unavailable; no retry or paid fallback attempted"
+            ) from error
         if len(raw) > MAX_RESPONSE_BYTES:
             raise LLMUnavailable("OpenRouter response exceeded the byte budget")
         if on_progress is not None:

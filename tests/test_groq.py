@@ -7,7 +7,7 @@ from urllib.error import HTTPError
 import pytest
 
 from vulnassess.errors import LLMUnavailable
-from vulnassess.groq import GroqClient, MODEL
+from vulnassess.groq import MODEL, GroqClient
 
 
 class Response:
@@ -38,7 +38,9 @@ def test_groq_uses_bounded_structured_request():
 
 def test_groq_rate_limit_does_not_echo_key():
     client = GroqClient(api_key="test-only")
-    error = HTTPError("https://api.groq.com/openai/v1/chat/completions", 429, "rate limit", {}, None)
+    error = HTTPError(
+        "https://api.groq.com/openai/v1/chat/completions", 429, "rate limit", {}, None
+    )
     with patch("vulnassess.groq.urllib.request.urlopen", side_effect=error):
         with pytest.raises(LLMUnavailable, match="rate limit") as caught:
             client.generate_structured("case", {"type": "object"})

@@ -7,6 +7,7 @@ import re
 from ipaddress import ip_address
 from typing import Any, Iterable, Sequence
 
+from vulnassess.context_facts import interpreted_control as interpreted_control
 from vulnassess.errors import ConfigError
 from vulnassess.role_model import RoleModel
 from vulnassess.schema import ContextProfile, Feature, Finding, Host
@@ -147,19 +148,6 @@ def detect_controls(
         else Feature(None, 0.0, "rule", "none observed")
     )
     return controls
-
-
-def interpreted_control(record: dict[str, Any]) -> dict[str, Any]:
-    """Read old rule-generated 'none observed' values as unknown without rewriting history."""
-    feature = dict(record)
-    if (
-        feature.get("value") is False
-        and feature.get("source") == "rule"
-        and feature.get("evidence") == "none observed"
-    ):
-        feature["value"] = None
-        feature["confidence"] = 0.0
-    return feature
 
 
 def build_profile(

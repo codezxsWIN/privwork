@@ -313,6 +313,7 @@ class AssessmentRepository:
     """Parameterised access to the expanded assessment schema."""
 
     def __init__(self, database: str | Path | None = None, *, read_only: bool = False) -> None:
+        self.connection: Any
         self.backend = resolve_backend(database)
         self.read_only = read_only
         if isinstance(self.backend, str):
@@ -331,7 +332,8 @@ class AssessmentRepository:
                 "MISSING: install psycopg to use a PostgreSQL assessment store"
             ) from error
         try:
-            self.connection: sqlite3.Connection | Any = psycopg.connect(url, row_factory=dict_row)
+            connect: Any = psycopg.connect
+            self.connection = connect(url, row_factory=dict_row)
             if self.read_only:
                 with self.connection.cursor() as cursor:
                     cursor.execute("set default_transaction_read_only = on")

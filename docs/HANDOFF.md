@@ -492,7 +492,20 @@ set to that copy. Socket creation, connections and name resolution were patched
 to fail. The workspace assessment database was not used. The executed test call:
 
 ```python
-pytest.main(['-q', '-ra', '--tb=no', '-p', 'no:cacheprovider', 'tests/test_analyst.py', 'tests/test_model_governance.py', 'tests/test_orchestrator.py', 'tests/test_ui.py::TestUiExport', 'tests/test_ui.py::TestUiAssets'])
+pytest.main(
+    [
+        "-q",
+        "-ra",
+        "--tb=no",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_analyst.py",
+        "tests/test_model_governance.py",
+        "tests/test_orchestrator.py",
+        "tests/test_ui.py::TestUiExport",
+        "tests/test_ui.py::TestUiAssets",
+    ]
+)
 ```
 
 ```text
@@ -511,7 +524,18 @@ TESTED WITH MOCKS: after copying the subsequently changed explanation files into
 the same isolated source tree, the additional focused test call was:
 
 ```python
-pytest.main(['-q', '-ra', '--tb=short', '-p', 'no:cacheprovider', 'tests/test_all.py::TestExplain', '-k', 'structured_stream'])
+pytest.main(
+    [
+        "-q",
+        "-ra",
+        "--tb=short",
+        "-p",
+        "no:cacheprovider",
+        "tests/test_all.py::TestExplain",
+        "-k",
+        "structured_stream",
+    ]
+)
 ```
 
 ```text

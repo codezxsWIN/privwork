@@ -17,7 +17,7 @@ class TestNessusReader(unittest.TestCase):
                 '<HostProperties><tag name="host-ip">172.28.0.12</tag></HostProperties>'
                 '<ReportItem port="443" protocol="tcp" severity="3" pluginID="123" '
                 'pluginName="TLS issue"><description>Check TLS</description>'
-                '<plugin_output>Observed setting</plugin_output><cve>CVE-2024-12345</cve>'
+                "<plugin_output>Observed setting</plugin_output><cve>CVE-2024-12345</cve>"
                 '</ReportItem><ReportItem port="0" severity="0" pluginID="19506" '
                 'pluginName="Scan information"/></ReportHost></Report></NessusClientData_v2>',
                 encoding="utf-8",
@@ -52,7 +52,8 @@ class TestNessusReader(unittest.TestCase):
                 parse_nessus_xml(path, "lab-run", host_ip="172.28.0.12")
             path.write_text(
                 '<!DOCTYPE NessusClientData_v2 [<!ENTITY x "bad">]>'
-                '<NessusClientData_v2>&x;</NessusClientData_v2>', encoding="utf-8"
+                "<NessusClientData_v2>&x;</NessusClientData_v2>",
+                encoding="utf-8",
             )
             with self.assertRaises(AdapterError):
                 parse_nessus_xml(path, "lab-run", host_ip="172.28.0.12")
