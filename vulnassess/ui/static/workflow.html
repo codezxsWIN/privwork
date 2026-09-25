@@ -29,6 +29,7 @@
     <p id="live-path-boundary" class="live-execution-detail" hidden>This quick run launches Nmap and the selected AI analyst only. Nikto requires a working local Perl/XML::Writer setup. Nessus findings appear after a completed .nessus report is imported for the authorized target.</p>
     <details id="live-execution-details" class="live-execution-details" hidden><summary>View collected evidence and model output</summary><div id="live-execution-output" class="live-execution-output"></div></details>
   </section>
+  <!-- ==================== RUN ANALYSIS PANEL: START ==================== -->
   <section id="run-panel" class="run-panel" aria-label="Run analysis" hidden>
     <div class="run-panel-heading"><div><span class="eyebrow">ASSESSMENT RUN</span><h2>Run analysis</h2></div><button id="close-run" class="tool" type="button" aria-label="Close run panel">×</button></div>
     <p>Enter an authorised target for a light Nmap scan and AI assessment. Nikto and Nessus are separate evidence paths. Their stages show completion only when scanner output was actually imported.</p>
@@ -60,6 +61,7 @@
       <div id="recorded-analysis-results" aria-live="polite"></div>
     </details>
   </section>
+  <!-- ==================== RUN ANALYSIS PANEL: END ====================== -->
   <main class="flow-workspace">
     <section id="viewport" class="viewport" aria-label="Assessment workflow canvas" tabindex="0">
       <div class="trace-controls"><label for="workflow-host">Target</label><select id="workflow-host" disabled><option>All recorded hosts</option></select><label class="sr-only" for="workflow-finding">Trace a finding</label><select id="workflow-finding" disabled><option>All findings</option></select></div>

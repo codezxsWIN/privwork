@@ -278,6 +278,7 @@ function completedFlowEdges() {
   return [...completed];
 }
 
+// ==================== RUN ANALYSIS: LIVE RUN HANDLER (START) ====================
 async function startLiveRun() {
   if (liveState.busy) return;
   const target = document.getElementById('new-target').value.trim();
@@ -377,6 +378,7 @@ async function startLiveRun() {
     renderGraph();
   }
 }
+// ==================== RUN ANALYSIS: LIVE RUN HANDLER (END) ======================
 
 async function previewLiveFlow() {
   if (liveState.previewState === 'running') {
@@ -1044,6 +1046,7 @@ async function loadWorkflow() {
 }
 
 document.getElementById('refresh-workflow').addEventListener('click', loadWorkflow);
+// ==================== RUN ANALYSIS: PANEL OPEN/CLOSE CONTROLS (START) ====================
 document.getElementById('open-run').addEventListener('click', () => {
   runPanel.hidden = !runPanel.hidden;
   document.getElementById('open-run').setAttribute('aria-expanded', String(!runPanel.hidden));
@@ -1054,6 +1057,7 @@ document.getElementById('close-run').addEventListener('click', () => {
   document.getElementById('open-run').setAttribute('aria-expanded', 'false');
   document.getElementById('open-run').focus();
 });
+// ==================== RUN ANALYSIS: PANEL OPEN/CLOSE CONTROLS (END) ====================
 document.getElementById('start-run').addEventListener('click', startRun);
 document.getElementById('start-live-run').addEventListener('click', startLiveRun);
 document.getElementById('import-nessus').addEventListener('click', async () => {
@@ -1092,6 +1096,7 @@ runTargets.addEventListener('change', event => {
   else runState.selected.delete(event.target.value);
   renderRunTargets();
 });
+// ==================== RUN ANALYSIS: TARGET SCOPE CHECK (START) ====================
 document.getElementById('check-target').addEventListener('click', async () => {
   const input = document.getElementById('new-target');
   const output = document.getElementById('target-check-result');
@@ -1108,6 +1113,7 @@ document.getElementById('check-target').addEventListener('click', async () => {
     output.textContent = error.message;
   }
 });
+// ==================== RUN ANALYSIS: TARGET SCOPE CHECK (END) ======================
 runSelect.addEventListener('change', () => { location.href = `/workflow?run=${encodeURIComponent(runSelect.value)}`; });
 hostSelect.addEventListener('change', () => { view.host = hostSelect.value; view.finding = ''; populateFindings(); updateLocation(); renderGraph(); renderInspector(); });
 findingSelect.addEventListener('change', () => {

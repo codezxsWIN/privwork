@@ -32,6 +32,8 @@ select { background: var(--flow-paper); padding: 8px 24px 8px 10px; border: 1px 
 #preview-scenario { max-width: 190px; }
 .run-button { border: 1px solid var(--flow-accent); border-radius: 5px; background: var(--flow-accent); color: var(--flow-bg); padding: 9px 18px; font-size: 12px; font-weight: 650; white-space: nowrap; }
 .run-button:hover:not(:disabled) { filter: brightness(1.12); }
+/* ==================== RUN ANALYSIS PANEL STYLES: START ====================
+   Includes the panel layout, target form, progress, and result styles. */
 .run-panel { position: fixed; z-index: 12; right: 24px; top: 74px; width: min(410px, calc(100vw - 32px)); max-height: calc(100dvh - 90px); overflow: auto; border: 1px solid var(--flow-line-strong); border-radius: 9px; background: var(--flow-paper); box-shadow: 0 18px 50px var(--flow-shadow); padding: 20px; font-size: 12px; }
 .run-panel-heading, .run-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .run-panel-heading h2 { margin: 4px 0 0; font-size: 18px; }
@@ -67,6 +69,7 @@ select { background: var(--flow-paper); padding: 8px 24px 8px 10px; border: 1px 
 .recorded-run summary { cursor: pointer; color: var(--flow-muted); font-size: 11px; }
 .recorded-run[open] summary { margin-bottom: 12px; }
 #start-live-run { margin-top: 10px; width: 100%; }
+/* ==================== RUN ANALYSIS PANEL STYLES: END ====================== */
 .live-result { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--flow-line); }
 .live-result h3 { font-size: 12px; margin: 14px 0 7px; }
 .live-result ul { margin: 8px 0 14px; padding-left: 18px; font: 11px/1.7 var(--flow-mono); }
