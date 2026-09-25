@@ -38,3 +38,7 @@ class LLMUnavailable(VulnAssessError):
     """The configured local model is absent, unreachable, malformed, or timed out."""
 
     exit_code = 6
+
+
+class NeedsReview(LLMUnavailable):
+    """The AI boundary rejected output; no analyst result may be displayed."""

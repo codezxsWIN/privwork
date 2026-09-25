@@ -42,7 +42,7 @@ const liveStages = [
   ['scope', 'Authorise target'], ['scanner', 'Scan services'], ['context', 'Infer context'],
   ...analysisStages.filter(([id]) => id !== 'records'),
 ];
-const liveState = {active: false, busy: false, previewState: 'idle', previewScenario: null, target: '', provider: '', reuseRecent: false, stages: new Map(), scan: null, result: null, error: ''};
+const liveState = {active: false, busy: false, previewState: 'idle', previewScenario: null, target: '', provider: '', reuseRecent: false, stages: new Map(), scan: null, result: null, error: '', needsReview: false};
 let previewSequence = 0;
 const executionSteps = () => liveState.previewState !== 'idle' && liveState.previewScenario
   ? liveState.previewScenario.steps
@@ -319,6 +319,7 @@ async function startLiveRun() {
   liveState.scan = null;
   liveState.result = null;
   liveState.error = '';
+  liveState.needsReview = false;
   renderLiveProgress();
   renderLiveExecution();
   renderLiveResult();
@@ -343,6 +344,10 @@ async function startLiveRun() {
       renderLiveResult();
       renderLiveExecution();
       renderGraph();
+    } else if (event.type === 'needs-review' && typeof event.message === 'string') {
+      const failure = new Error(event.message);
+      failure.name = 'NeedsReviewError';
+      throw failure;
     } else if (event.type === 'error' && typeof event.message === 'string') {
       throw new Error(event.message);
     } else {
@@ -380,6 +385,7 @@ async function startLiveRun() {
     if (!liveState.result) throw new Error('Live assessment ended without a model result.');
   } catch (error) {
     liveState.error = error instanceof Error ? error.message : 'Live assessment failed.';
+    liveState.needsReview = error instanceof Error && error.name === 'NeedsReviewError';
     const running = [...liveState.stages].reverse().find(([, entry]) => entry.state === 'running');
     if (running) liveState.stages.set(running[0], {state: 'error', detail: liveState.error});
     renderLiveResult();
@@ -420,6 +426,7 @@ async function previewLiveFlow() {
   liveState.scan = null;
   liveState.result = null;
   liveState.error = '';
+  liveState.needsReview = false;
   renderLiveProgress();
   renderLiveExecution();
   renderLiveResult();
@@ -682,10 +689,11 @@ function renderGraph() {
   document.getElementById('canvas-status').textContent = liveState.previewState !== 'idle'
     ? `Simulated preview / ${liveState.previewScenario.label} / ${currentLive ? executionSteps().find(step => step.id === currentLive[0])?.label : liveState.previewState}`
     : liveState.active
-    ? `Live run / ${currentLive ? `${executionSteps().find(step => step.id === currentLive[0])?.label} · ${currentLive[1].detail}` : liveState.result ? 'complete · model output validated' : liveState.error ? 'stopped · stage failed' : 'starting'}`
+    ? `Live run / ${currentLive ? `${executionSteps().find(step => step.id === currentLive[0])?.label} · ${currentLive[1].detail}` : liveState.result ? 'complete · model output validated' : liveState.needsReview ? 'Needs review · model output rejected' : liveState.error ? 'stopped · stage failed' : 'starting'}`
     : analysis?.status === 'running'
     ? `Local analyst / ${analysisStages.find(([id]) => id === analysis.stage)?.[1] || 'Starting'}`
     : analysis?.status === 'complete' ? 'Local analyst complete / stored scores unchanged'
+    : analysis?.status === 'needs_review' ? 'Needs review / model output rejected / stored scores unchanged'
     : analysis?.status === 'error' ? 'Local analyst failed / stored scores unchanged'
     : 'Stored records / no pipeline execution';
   const nodeMap = new Map(nodes.map(node => [node.id, node]));
@@ -909,7 +917,7 @@ function renderAnalyst() {
     holder.append(progress);
   }
   if (live?.status === 'running') holder.append(element('p', 'analysis-wait', 'Only the local analyst steps above are running. Scanner and score nodes show stored records.'));
-  if (live?.status === 'error') holder.append(element('p', 'analysis-error', live.error));
+  if (live?.status === 'error' || live?.status === 'needs_review') holder.append(element('p', 'analysis-error', live.error));
   if (live?.result) {
     const result = live.result;
     appendDecisionFrame(holder, result.decision_frame);
@@ -970,12 +978,12 @@ async function analyzeTarget(hostIp = view.host, runId = view.assessment?.run.ru
     const live = view.analyses.get(key);
     const steps = {...live?.steps};
     steps[live?.stage || 'records'] = {state: 'error', detail: error.message};
-    view.analyses.set(key, {...live, status: 'error', steps, error: error.message});
+    view.analyses.set(key, {...live, status: error.name === 'NeedsReviewError' ? 'needs_review' : 'error', steps, error: error.message});
   }
   if (view.assessment?.run.run_id === runId && view.host === hostIp) {
     renderGraph();
     renderInspector();
-    document.getElementById('workflow-announcement').textContent = view.analyses.get(key).status === 'complete' ? 'Analyst response received. Stored scores unchanged.' : 'Analysis failed. No result substituted.';
+    document.getElementById('workflow-announcement').textContent = view.analyses.get(key).status === 'complete' ? 'Analyst response received. Stored scores unchanged.' : view.analyses.get(key).status === 'needs_review' ? 'Needs review. Model output rejected; no partial result shown.' : 'Analysis failed. No result substituted.';
   }
   return view.analyses.get(key);
 }

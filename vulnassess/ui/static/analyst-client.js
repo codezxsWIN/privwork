@@ -60,6 +60,10 @@ export async function requestAnalystProgress(runId, hostIp, onProgress = () => {
       onProgress(event);
     } else if (event.type === 'result') {
       result = validateAnalystResponse(event.result, runId, hostIp);
+    } else if (event.type === 'needs-review') {
+      const failure = new Error(typeof event.message === 'string' ? event.message : 'Needs review: analyst output was rejected.');
+      failure.name = 'NeedsReviewError';
+      throw failure;
     } else if (event.type === 'error') {
       throw new Error(typeof event.message === 'string' ? event.message : 'Local analysis failed.');
     } else {

@@ -7,13 +7,14 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Callable
 
+from vulnassess.ai_boundary import SYSTEM_BOUNDARY_PROMPT
 from vulnassess.errors import ConfigError, LLMUnavailable
 
 MODEL = "deepseek/deepseek-v4-flash-0731:free"
 ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
 MAX_RESPONSE_BYTES = 64 * 1024
 MAX_PROMPT_BYTES = 20 * 1024
-MAX_COMPLETION_TOKENS = 800
+MAX_COMPLETION_TOKENS = 1200
 
 
 def load_api_key() -> str:
@@ -57,6 +58,7 @@ class OpenRouterClient:
         num_predict: int = MAX_COMPLETION_TOKENS,
         num_ctx: int = 16384,
         on_progress: Callable[[int], None] | None = None,
+        on_raw: Callable[[bytes], None] | None = None,
     ) -> dict[str, Any]:
         self.available()
         if len(prompt.encode("utf-8")) > MAX_PROMPT_BYTES:
@@ -67,7 +69,10 @@ class OpenRouterClient:
             raise ConfigError("OpenRouter context budget is invalid")
         body = {
             "model": MODEL,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {"role": "system", "content": SYSTEM_BOUNDARY_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
             "response_format": {
                 "type": "json_schema",
                 "json_schema": {"name": "vulnassess_analysis", "strict": True, "schema": schema},
@@ -117,6 +122,8 @@ class OpenRouterClient:
             raise LLMUnavailable("OpenRouter response exceeded the byte budget")
         if on_progress is not None:
             on_progress(len(raw))
+        if on_raw is not None:
+            on_raw(raw)
         try:
             envelope = json.loads(raw)
             content = envelope["choices"][0]["message"]["content"]

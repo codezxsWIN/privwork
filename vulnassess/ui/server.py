@@ -19,7 +19,7 @@ import yaml
 import vulnassess.analyst as analyst
 import vulnassess.live_assessment as live_assessment
 import vulnassess.orchestrator as orchestrator
-from vulnassess.errors import AdapterError, ConfigError, LLMUnavailable, ScopeError
+from vulnassess.errors import AdapterError, ConfigError, LLMUnavailable, NeedsReview, ScopeError
 from vulnassess.nessus_import import import_nessus_report
 from vulnassess.readers._input import MAX_CAPTURE_BYTES
 from vulnassess.repository import ENV_VAR, AssessmentRepository
@@ -526,6 +526,8 @@ class UiApplication:
                             **store.unavailable("diff result", f"{parts[2]} / {parts[3]}"),
                         },
                     )
+        except NeedsReview as error:
+            return error_response(422, str(error))
         except (ConfigError, LLMUnavailable) as error:
             return error_response(409, str(error))
         return error_response(404, "UI route not found")
@@ -610,6 +612,11 @@ class UiRequestHandler(BaseHTTPRequestHandler):
             send({"type": "result", "result": result})
         except (BrokenPipeError, ConnectionResetError):
             return
+        except NeedsReview as error:
+            try:
+                send({"type": "needs-review", "message": str(error)})
+            except (BrokenPipeError, ConnectionResetError):
+                return
         except (ConfigError, LLMUnavailable) as error:
             try:
                 send({"type": "error", "message": str(error)})
@@ -656,6 +663,11 @@ class UiRequestHandler(BaseHTTPRequestHandler):
             send({"type": "result", "result": result})
         except (BrokenPipeError, ConnectionResetError):
             return
+        except NeedsReview as error:
+            try:
+                send({"type": "needs-review", "message": str(error)})
+            except (BrokenPipeError, ConnectionResetError):
+                return
         except (ConfigError, LLMUnavailable) as error:
             try:
                 send({"type": "error", "message": str(error)})

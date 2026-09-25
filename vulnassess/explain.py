@@ -8,15 +8,26 @@ the deterministic sentence from `scoring.describe`, and says so in the validatio
 This is the only module permitted to import a network client.
 """
 
+import hashlib
 import json
 import re
 import time
 import urllib.error
 import urllib.request
 from ipaddress import ip_address
-from typing import Callable
+from pathlib import Path
+from typing import Callable, cast
 from urllib.parse import urlsplit
 
+from vulnassess.ai_boundary import (
+    CONTROL_TOKENS,
+    INJECTION_SENTINEL,
+    SYSTEM_BOUNDARY_PROMPT,
+    append_audit,
+    digest,
+    envelope,
+    verify_claims,
+)
 from vulnassess.errors import ConfigError, LLMUnavailable
 from vulnassess.schema import ContextProfile, Finding, Rationale, ScoreBreakdown
 
@@ -27,6 +38,61 @@ MAX_SENTENCE_CHARS = 240
 MAX_RESPONSE_BYTES = 64 * 1024
 MAX_STREAM_BYTES = 16 * MAX_RESPONSE_BYTES
 MAX_TIMEOUT_SECONDS = 2400.0
+RATIONALE_SCHEMA_VERSION = "rationale.v1"
+RATIONALE_AUDIT_PATH = Path("data/ai_audit.jsonl")
+RATIONALE_SCHEMA: dict[str, object] = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["schema_version", "text", "claims"],
+    "properties": {
+        "schema_version": {"type": "string", "enum": [RATIONALE_SCHEMA_VERSION]},
+        "text": {"type": "string"},
+        "claims": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": [
+                    "path",
+                    "label",
+                    "evidence_ids",
+                    "quotes",
+                    "finding_ids",
+                    "confidence",
+                    "verification_action",
+                    "score",
+                ],
+                "properties": {
+                    "path": {"type": "string", "enum": ["text"]},
+                    "label": {
+                        "type": "string",
+                        "enum": ["observed", "inferred", "hypothesis", "unknown"],
+                    },
+                    "evidence_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                    "quotes": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "required": ["evidence_id", "text"],
+                            "properties": {
+                                "evidence_id": {"type": "string"},
+                                "text": {"type": "string"},
+                            },
+                        },
+                    },
+                    "finding_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    "verification_action": {"type": ["string", "null"]},
+                    "score": {"type": ["number", "null"]},
+                },
+            },
+        },
+    },
+}
 FENCE = "-----"
 UNTRUSTED_PREFIX = "untrusted data follows"
 INSTRUCTION = (
@@ -210,6 +276,7 @@ class OllamaClient:
         num_predict: int = 600,
         num_ctx: int = 2048,
         on_progress: Callable[[int], None] | None = None,
+        on_raw: Callable[[bytes], None] | None = None,
     ) -> dict:
         """Generate JSON in JSON mode over a streamed /api/chat exchange.
 
@@ -225,7 +292,10 @@ class OllamaClient:
             raise ConfigError("structured generation num_ctx must be in 512..131072")
         payload = {
             "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [
+                {"role": "system", "content": SYSTEM_BOUNDARY_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
             "stream": True,
             "format": schema,
             "options": {
@@ -287,8 +357,11 @@ class OllamaClient:
             ) from error
         if not completed:
             raise LLMUnavailable("Ollama stream ended before explicit completion")
+        raw_output = "".join(parts).encode("utf-8")
+        if on_raw is not None:
+            on_raw(raw_output)
         try:
-            result = json.loads("".join(parts))
+            result = json.loads(raw_output)
         except (json.JSONDecodeError, TypeError, ValueError) as error:
             raise LLMUnavailable("Ollama returned invalid structured analyst output") from error
         if not isinstance(result, dict):
@@ -312,31 +385,108 @@ def rationale_for(
             model=None,
             validation={"accepted": True, "problems": [], "note": "no model configured"},
         )
+    evidence = [
+        {"id": f"E{index}", "text": f"{key}: {value}"}
+        for index, (key, value) in enumerate(facts.items(), 1)
+    ]
+    prompt = (
+        "Rewrite the deterministic verdict as one short sentence. Do not change a score. "
+        f"Valid finding ID: {breakdown.finding_id}. "
+        "Return schema rationale.v1 with one claim for path text; cite a verbatim quote "
+        "from a supplied evidence block. Unknown facts stay unknown.\n"
+        + "\n".join(envelope(item["id"], item["text"], limit=MAX_FACT_CHARS) for item in evidence)
+    )
+    audit = {
+        "stage": RATIONALE_SCHEMA_VERSION,
+        "model": getattr(client, "model", "unknown"),
+        "finding_id": breakdown.finding_id,
+        "prompt_hash": digest({"system": SYSTEM_BOUNDARY_PROMPT, "user": prompt}),
+        "input_hash": digest(evidence),
+        "output_hash": None,
+        "decision": "validate",
+        "outcome": "needs_review",
+    }
     try:
-        answer = client.generate(build_prompt(facts))
+
+        def capture_raw(raw: bytes) -> None:
+            audit["output_hash"] = hashlib.sha256(raw).hexdigest()
+            audit["canary_seen"] = INJECTION_SENTINEL.encode("ascii") in raw
+
+        response = client.generate_structured(
+            prompt, RATIONALE_SCHEMA, num_predict=300, on_raw=capture_raw
+        )
+        if audit["output_hash"] is None:
+            try:
+                audit["output_hash"] = digest(response)
+            except (TypeError, ValueError):
+                audit["output_hash"] = digest(repr(response))
+        if audit.get("canary_seen") or INJECTION_SENTINEL in json.dumps(
+            response, ensure_ascii=True
+        ):
+            audit["flagged_evidence_ids"] = [
+                item["id"] for item in evidence if CONTROL_TOKENS.search(item["text"])
+            ]
+            raise LLMUnavailable("untrusted instruction canary triggered")
+        if (
+            not isinstance(response, dict)
+            or set(response) != {"schema_version", "text", "claims"}
+            or response["schema_version"] != RATIONALE_SCHEMA_VERSION
+        ):
+            raise LLMUnavailable("rationale schema is invalid")
+        verify_claims(response["claims"], evidence, {breakdown.finding_id}, {}, {"text"})
+        if response["claims"][0]["finding_ids"] != [breakdown.finding_id]:
+            raise LLMUnavailable("rationale claim does not cite its finding")
+        answer = response["text"]
+        if not isinstance(answer, str):
+            raise LLMUnavailable("rationale text is invalid")
+        accepted, record = validate(answer, facts)
+        if not accepted:
+            raise LLMUnavailable("; ".join(cast(list[str], record["problems"])))
+        audit["outcome"] = "validated"
     except LLMUnavailable as error:
+        audit["decision"] = "reject"
+        audit["reason"] = type(error).__name__
+        if audit.get("canary_seen"):
+            audit["flagged_evidence_ids"] = [
+                item["id"] for item in evidence if CONTROL_TOKENS.search(item["text"])
+            ]
         return Rationale(
             finding_id=breakdown.finding_id,
             text=breakdown.reason,
             source="template",
             model=getattr(client, "model", None),
-            validation={"accepted": False, "problems": [str(error)]},
+            validation={
+                "accepted": False,
+                "status": "needs_review",
+                "problems": [
+                    "untrusted instruction canary triggered"
+                    if audit.get("canary_seen")
+                    else str(error)
+                ],
+            },
         )
-    accepted, record = validate(answer, facts)
-    if not accepted:
+    except Exception as error:
+        audit["decision"] = "reject"
+        audit["reason"] = type(error).__name__
         return Rationale(
             finding_id=breakdown.finding_id,
             text=breakdown.reason,
             source="template",
-            model=client.model,
-            validation=record,
+            model=getattr(client, "model", None),
+            validation={
+                "accepted": False,
+                "status": "needs_review",
+                "problems": ["model boundary failed unexpectedly"],
+            },
         )
+    finally:
+        append_audit(audit, RATIONALE_AUDIT_PATH)
     return Rationale(
         finding_id=breakdown.finding_id,
         text=answer.strip(),
         source="llm",
         model=client.model,
-        validation=record,
+        validation={**record, "status": "validated"},
     )
 
 

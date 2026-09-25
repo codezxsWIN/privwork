@@ -1,11 +1,12 @@
 import copy
+import re
 from pathlib import Path
 
 import pytest
 
 from finetune.build_corpus import build_example
 from vulnassess import analyst
-from vulnassess.errors import ConfigError, LLMUnavailable
+from vulnassess.errors import ConfigError, LLMUnavailable, NeedsReview
 from vulnassess.ui.reader import ReadOnlyStore
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,7 +28,91 @@ class FakeClient:
         self.prompt = prompt
         self.kwargs = kwargs
         assert schema == analyst.ANALYSIS_SCHEMA
+        if (
+            isinstance(self.result, dict)
+            and "schema_version" not in self.result
+            and "correlations" in self.result
+        ):
+            evidence = {
+                identity: text.replace("\\u003c", "<")
+                .replace("\\u003e", ">")
+                .replace("\\u0026", "&")
+                for identity, text in re.findall(
+                    r'<evidence id="(E\d+)" trust="untrusted">\n(.*?)\n</evidence>',
+                    prompt,
+                    re.DOTALL,
+                )
+            }
+            return complete_fixture(self.result, evidence)
         return self.result
+
+
+def complete_fixture(result, evidence):
+    """Make legacy test examples speak the new model schema; production never does this."""
+    response = copy.deepcopy(result)
+    response.setdefault("investigations", [])
+    response["schema_version"] = analyst.SCHEMA_VERSION
+    sections = [
+        ("summary", response.get("recommended_actions", [{}])[0].get("evidence_ids", ["E1"]), []),
+        (
+            "context_effect.explanation",
+            response.get("context_effect", {}).get("evidence_ids", ["E1"]),
+            [],
+        ),
+    ]
+    for index, action in enumerate(response.get("recommended_actions", [])):
+        sections.extend(
+            (
+                f"recommended_actions.{index}.{field}",
+                action.get("evidence_ids", []),
+                action.get("finding_ids", []),
+            )
+            for field in ("action", "reason")
+        )
+    for index, item in enumerate(response.get("correlations", [])):
+        sections.append(
+            (
+                f"correlations.{index}.observation",
+                item.get("evidence_ids", []),
+                item.get("finding_ids", []),
+            )
+        )
+    for index, item in enumerate(response.get("investigations", [])):
+        sections.extend(
+            (
+                f"investigations.{index}.{field}",
+                item.get("evidence_ids", []),
+                item.get("finding_ids", []),
+            )
+            for field in ("hypothesis", "verification", "alternative")
+        )
+    for index, _ in enumerate(response.get("uncertainties", [])):
+        sections.append((f"uncertainties.{index}", [next(iter(evidence), "E1")], []))
+    response["claims"] = [
+        {
+            "path": path,
+            "label": "hypothesis" if path.endswith(".hypothesis") else "inferred",
+            "evidence_ids": ids if ids else ["E1"],
+            "quotes": [
+                {
+                    "evidence_id": ids[0] if ids and isinstance(ids[0], str) else "E1",
+                    "text": evidence.get(
+                        ids[0] if ids and isinstance(ids[0], str) else "E1", "unknown"
+                    )[:12],
+                }
+            ],
+            "finding_ids": findings,
+            "confidence": 0.7,
+            "verification_action": response["investigations"][int(path.split(".")[1])][
+                "verification"
+            ]
+            if path.endswith(".hypothesis")
+            else None,
+            "score": None,
+        }
+        for path, ids, findings in sections
+    ]
+    return response
 
 
 def demo_payload():
@@ -259,7 +344,7 @@ def test_zero_finding_context_effect_cites_exposure_and_action_cites_service():
         "recommended_actions": [
             {
                 "order": 1,
-                "action": "Review the exposed SSH service.",
+                "action": f"Review the exposed {case['services'][0]['name']} service.",
                 "reason": "The service is reachable from the internet.",
                 "finding_ids": [],
                 "evidence_ids": [case["services"][0]["evidence_id"]],
@@ -307,7 +392,7 @@ def test_unknown_auth_control_cannot_be_asserted_absent_in_action_reason():
         analyst.analyze_target(payload, "172.28.0.12", FakeClient(response))
 
 
-def test_invalid_control_assertion_gets_one_grounded_correction_attempt():
+def test_invalid_control_assertion_fails_closed_without_correction_attempt():
     payload = demo_payload()
     case, evidence, _ = analyst.build_case(payload, "172.28.0.12")
     good = valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"])
@@ -321,16 +406,13 @@ def test_invalid_control_assertion_gets_one_grounded_correction_attempt():
 
         def generate_structured(self, prompt, schema, **kwargs):
             self.prompts.append(prompt)
-            return bad if len(self.prompts) == 1 else good
+            self.result = bad if len(self.prompts) == 1 else good
+            return super().generate_structured(prompt, schema, **kwargs)
 
     client = CorrectingClient()
-    result = analyst.analyze_target(payload, "172.28.0.12", client)
-    assert len(client.prompts) == 2
-    assert "unsupported control assertion about tls" in client.prompts[1]
-    assert (
-        result["analysis"]["recommended_actions"][0]["reason"]
-        == good["recommended_actions"][0]["reason"]
-    )
+    with pytest.raises(NeedsReview, match="unsupported control assertion about tls"):
+        analyst.analyze_target(payload, "172.28.0.12", client)
+    assert len(client.prompts) == 1
 
 
 def test_local_model_wait_is_bounded_before_generation():
@@ -395,11 +477,12 @@ def test_grouped_action_requires_support_for_each_named_finding():
     response = valid_result(first["id"], first["evidence_id"])
     response["recommended_actions"][0]["finding_ids"].append(second["id"])
     response["investigations"] = []
+    response = complete_fixture(response, {item["id"]: item["text"] for item in evidence})
     checked = analyst.validate_analysis(
         response, {first["id"], second["id"]}, {item["id"] for item in evidence} | {"E999"}
     )
     with pytest.raises(LLMUnavailable, match=f"cites {second['id']} without"):
-        analyst.validate_grounding(checked, case)
+        analyst.validate_grounding(checked, case, evidence)
 
 
 def test_cited_investigation_is_returned_with_canonical_finding_identity():
@@ -442,6 +525,7 @@ def test_investigation_cannot_cite_unknown_evidence_or_finding():
                 "evidence_ids": evidence_ids,
             }
         ]
+        response = complete_fixture(response, {"E1": "test evidence"})
         with pytest.raises(LLMUnavailable, match=expected):
             analyst.validate_analysis(response, {"F1"}, {"E1"})
 
@@ -459,6 +543,7 @@ def test_investigation_rejects_a_non_action_and_repeated_claims():
             "evidence_ids": ["E1"],
         }
     ]
+    response = complete_fixture(response, {"E1": "test evidence"})
     with pytest.raises(LLMUnavailable, match="testable verification"):
         analyst.validate_analysis(response, {"F1"}, {"E1"})
 
@@ -498,18 +583,15 @@ def test_case_bounds_intel_to_the_sharpest_records_at_real_scale():
     assert len(prompt) < 60_000
 
 
-def test_validator_tolerates_small_model_envelope_noise():
+def test_validator_rejects_small_model_envelope_noise():
     payload = demo_payload()
     case, evidence, alias_map = analyst.build_case(payload, "172.28.0.12")
     response = valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"])
     del response["correlations"]
     response["finding_ids"] = [case["findings"][0]["id"]]
     response["evidence_ids"] = [evidence[0]["id"]]
-    result = analyst.analyze_target(payload, "172.28.0.12", FakeClient(response))
-    assert result["analysis"]["correlations"] == []
-    alias = case["findings"][0]["id"]
-    canonical = result["analysis"]["recommended_actions"][0]["finding_ids"]
-    assert canonical == [alias_map[alias]]
+    with pytest.raises(NeedsReview, match="required schema"):
+        analyst.analyze_target(payload, "172.28.0.12", FakeClient(response))
 
 
 def test_evidence_budget_fails_closed_instead_of_reusing_a_citation(
@@ -589,7 +671,7 @@ def test_unsupported_identifiers_and_numbers_are_rejected(claim: str) -> None:
     case, evidence, _ = analyst.build_case(payload, "172.28.0.12")
     response = valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"])
     response["summary"] = claim
-    with pytest.raises(LLMUnavailable, match="unsupported"):
+    with pytest.raises(LLMUnavailable, match="unsupported|prose score"):
         analyst.analyze_target(payload, "172.28.0.12", FakeClient(response))
 
 
@@ -647,6 +729,7 @@ def test_corpus_builder_rejects_unsupported_supervision_facts() -> None:
     case, evidence, _ = analyst.build_case(payload, "172.28.0.12")
     response = valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"])
     response["summary"] = "Confirmed CVE-2099-99999 on this host."
+    response = complete_fixture(response, {item["id"]: item["text"] for item in evidence})
     with pytest.raises(LLMUnavailable, match="unsupported"):
         build_example(DATABASE, "demo", "172.28.0.12", response)
 
@@ -655,6 +738,7 @@ def test_corpus_builder_keeps_the_validated_case_without_writing_assessment() ->
     payload = demo_payload()
     case, evidence, _ = analyst.build_case(payload, "172.28.0.12")
     response = valid_result(case["findings"][0]["id"], case["findings"][0]["evidence_id"])
+    response = complete_fixture(response, {item["id"]: item["text"] for item in evidence})
     example = build_example(DATABASE, "demo", "172.28.0.12", response)
     assert "untrusted data follows" in example["prompt"]
     assert example["meta"]["findings"] == len(case["findings"])

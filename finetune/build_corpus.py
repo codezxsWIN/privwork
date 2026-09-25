@@ -41,7 +41,7 @@ def build_example(db: str | Path, run_id: str, host_ip: str, assessment: dict) -
         set(alias_map),
         {item["id"] for item in evidence},
     )
-    analyst.validate_grounding(validated, case)
+    analyst.validate_grounding(validated, case, evidence)
     return {
         "prompt": analyst.build_prompt(case, evidence, len(alias_map)),
         "response": json.dumps(validated, separators=(",", ":"), ensure_ascii=True),
@@ -57,7 +57,9 @@ def build_example(db: str | Path, run_id: str, host_ip: str, assessment: dict) -
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(
+        description=(__doc__ or "Build analyst corpus").splitlines()[0]
+    )
     parser.add_argument("--db", default="data/vulnassess.db")
     parser.add_argument("--run", required=True)
     parser.add_argument("--host", required=True, dest="host_ip")

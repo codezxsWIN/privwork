@@ -6,6 +6,7 @@ score works on real data. Real captures are gated behind a skip until a human pr
 
 import io
 import json
+import re
 import socket
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -896,6 +897,28 @@ class FakeModel:
         if isinstance(self.answer, Exception):
             raise self.answer
         return self.answer
+
+    def generate_structured(self, prompt, schema, **kwargs):
+        self.prompts.append(prompt)
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        identity = re.search(r"Valid finding ID: ([^\.]+)\.", prompt).group(1)
+        return {
+            "schema_version": "rationale.v1",
+            "text": self.answer,
+            "claims": [
+                {
+                    "path": "text",
+                    "label": "inferred",
+                    "evidence_ids": ["E1"],
+                    "quotes": [{"evidence_id": "E1", "text": "verdict:"}],
+                    "finding_ids": [identity],
+                    "confidence": 0.7,
+                    "verification_action": None,
+                    "score": None,
+                }
+            ],
+        }
 
 
 class TestExplain(unittest.TestCase):
