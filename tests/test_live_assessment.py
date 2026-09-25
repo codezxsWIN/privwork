@@ -1,5 +1,6 @@
 """The live path uses one authorised IP and a bounded scanner command."""
 
+import sqlite3
 import subprocess
 from pathlib import Path
 from unittest.mock import patch
@@ -83,8 +84,14 @@ def test_live_scan_refuses_out_of_scope_ip_before_launch():
             )
 
 
-def test_model_retry_reuses_recent_scan_without_starting_nmap():
-    app = UiApplication(ROOT / "data" / "vulnassess.db", ROOT / "config")
+def test_model_retry_reuses_recent_scan_without_starting_nmap(tmp_path):
+    database = tmp_path / "vulnassess.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE runs (run_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, "
+            "config_hash TEXT NOT NULL, summary_json TEXT NOT NULL DEFAULT '{}')"
+        )
+    app = UiApplication(database, ROOT / "config")
     check = {"status": "ready", "resolved_ips": ["45.33.32.156"], "missing": []}
     events = []
     captures = []
