@@ -325,7 +325,7 @@ class UiApplication:
                 )
             if case is None:
                 previous = self._last_live_scan.get(target_ip, 0.0)
-                if now - previous < 600:
+                if previous and now - previous < 600:
                     raise ConfigError(
                         "A scan of this target is already running or its evidence is unavailable; wait 10 minutes before another live scan"
                     )

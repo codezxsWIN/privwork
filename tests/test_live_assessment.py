@@ -116,6 +116,7 @@ def test_model_retry_reuses_recent_scan_without_starting_nmap(tmp_path):
 
     with (
         patch.object(app, "target_check", return_value=check),
+        patch("vulnassess.ui.server.time.monotonic", return_value=100),
         patch("vulnassess.ui.server.live_assessment.run", side_effect=first_run) as scanner,
         patch(
             "vulnassess.ui.server.analyst.analyze_target",
